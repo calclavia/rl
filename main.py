@@ -2,8 +2,14 @@ import gym
 import numpy as np
 import time
 from dqn import Agent
+from optparse import OptionParser
 
-env = gym.make('CartPole-v0')
+parser = OptionParser()
+parser.add_option("-e", "--env",  help="Gym Environment")
+
+(options, args) = parser.parse_args()
+
+env = gym.make(options.env)
 #env.monitor.start('/tmp/cartpole-experiment-1')
 
 # Create an agent based on the environment.

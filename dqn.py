@@ -17,7 +17,8 @@ class Agent:
                  discount=0.99,
                  memory=400000,
                  target_update_interval=10000,
-                 initial_replay_size=10000):
+                 initial_replay_size=10000,
+                 train_interval=4):
 
         self.state_shape = state_shape
         self.num_actions = num_actions
@@ -26,6 +27,7 @@ class Agent:
         self.memory = memory
         self.target_update_interval = target_update_interval
         self.initial_replay_size = initial_replay_size
+        self.train_interval = train_interval
 
         # Epsilon
         self.epsilon = start_epsilon
@@ -58,7 +60,8 @@ class Agent:
         Build the DQN model
         """
         model = Sequential()
-        model.add(Dense(20, input_shape=self.state_shape, activation='relu'))
+        model.add(Dense(20, input_shape=self.state_shape, activation='tanh'))
+        model.add(Dense(20, input_shape=self.state_shape, activation='tanh'))
         model.add(Dense(self.num_actions))
 
         # Compile for regression task
@@ -111,7 +114,7 @@ class Agent:
         """
         loss = 0
 
-        if self.i > self.initial_replay_size:
+        if self.i > self.initial_replay_size and self.i % self.train_interval:
             # Sample minibatch data
             sample_size = min(self.batch_size, len(self.replay_memory))
             minibatch = random.sample(self.replay_memory, sample_size)
