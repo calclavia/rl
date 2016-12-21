@@ -122,23 +122,34 @@ class Agent:
 
         return action, state
 
-    def observe(self, state, action, reward, next_state):
+    def observe(self, state, action, reward, next_state, terminal):
         """
         Observe reward and the new state from performing an action
         """
+        # Create data and labels by extracting from replay memory
+        if terminal:
+            target_val = reward
+        else:
+            target_val = reward + self.discount * np.max(self.target_model.predict(np.array([next_state])))
+
+        # The target vector should equal the output for all elements
+        # except the element whose action we chose.
+        #TODO: Duplicate calculation
+        output = self.model.predict(np.array([state]))[0]
+        a_hot = np.array([int(i == action) for i in range(self.num_actions)])
+        target = output * (1 - a_hot) + target_val * a_hot
+
         # Store experience in memory
-        self.replay_memory.append((state, action, reward, next_state))
+        self.replay_memory.append((state, target))
 
         # Eject old memory
         if len(self.replay_memory) > self.memory:
             self.replay_memory.popleft()
 
-    def learn(self, terminal):
+    def learn(self):
         """
         Learns from replay memory
         """
-        # TODO: Not an efficient way. Many recomputations performed
-
         # Sample minibatch data
         sample_size = min(self.mbsz, len(self.replay_memory))
         minibatch = random.sample(self.replay_memory, sample_size)
@@ -147,18 +158,7 @@ class Agent:
         inputs = []
         targets = []
 
-        for state, action, reward, next_state in minibatch:
-            # Create data and labels by extracting from replay memory
-            if terminal:
-                target_val = reward
-            else:
-                target_val = reward + self.discount * np.max(self.target_model.predict(np.array([next_state])))
-
-            # The target vector should equal the output for all elements
-            # except the element whose action we chose.
-            output = self.model.predict(np.array([state]))[0]
-            a_hot = np.array([int(i == action) for i in range(self.num_actions)])
-            target = output * (1 - a_hot) + target_val * a_hot
+        for state, target in minibatch:
             inputs.append(state)
             targets.append(target)
 
