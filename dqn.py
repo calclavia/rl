@@ -16,7 +16,8 @@ class Agent:
                  mbsz=32,
                  discount=0.99,
                  memory=400000,
-                 target_update_interval=10000):
+                 target_update_interval=10000,
+                 initial_replay_size=20000):
 
         self.state_shape = state_shape
         self.num_actions = num_actions
@@ -24,6 +25,7 @@ class Agent:
         self.discount = discount
         self.memory = memory
         self.target_update_interval = target_update_interval
+        self.initial_replay_size = initial_replay_size
 
         # Epsilon
         self.epsilon = start_epsilon
@@ -33,7 +35,7 @@ class Agent:
 
         self.i = 0
 
-        # Experience replay (s, a, r, s') tuple
+        # Experience replay memory
         self.replay_memory = deque()
 
         # Create q network model
@@ -107,6 +109,8 @@ class Agent:
         """
         The agent observes a state and chooses an action.
         """
+        action_predictions = self.model.predict(np.array([state]))[0]
+
         # epsilon greedy exploration-exploitation
         if np.random.random() < self.epsilon:
             # Take a random action
@@ -114,19 +118,19 @@ class Agent:
         else:
             # Get q values for all actions in current state
             # Take the greedy policy (choose action with largest q value)
-            action = np.argmax(self.model.predict(np.array([state])))
+            action = np.argmax(action_predictions)
 
         # Epsilon annealing
         if self.epsilon > self.end_epsilon:
             self.epsilon -= self.annealing
 
-        return action, state
+        return action, state, action_predictions
 
-    def observe(self, state, action, reward, next_state, terminal):
+    def observe(self, state, action, reward, next_state, action_predictions, terminal):
         """
         Observe reward and the new state from performing an action
         """
-        # Create data and labels by extracting from replay memory
+        # Build inputs and targets to fit the model to
         if terminal:
             target_val = reward
         else:
@@ -134,10 +138,8 @@ class Agent:
 
         # The target vector should equal the output for all elements
         # except the element whose action we chose.
-        #TODO: Duplicate calculation
-        output = self.model.predict(np.array([state]))[0]
         a_hot = np.array([int(i == action) for i in range(self.num_actions)])
-        target = output * (1 - a_hot) + target_val * a_hot
+        target = action_predictions * (1 - a_hot) + target_val * a_hot
 
         # Store experience in memory
         self.replay_memory.append((state, target))
@@ -150,26 +152,26 @@ class Agent:
         """
         Learns from replay memory
         """
-        # Sample minibatch data
-        sample_size = min(self.mbsz, len(self.replay_memory))
-        minibatch = random.sample(self.replay_memory, sample_size)
+        loss = 0
+        
+        if self.i > self.initial_replay_size:
+            # Sample minibatch data
+            sample_size = min(self.mbsz, len(self.replay_memory))
+            minibatch = random.sample(self.replay_memory, sample_size)
+            inputs, targets = zip(*minibatch)
+            inputs = np.array(inputs)
+            targets = np.array(targets)
 
-        # Build inputs and targets to fit the model to
-        inputs = []
-        targets = []
-
-        for state, target in minibatch:
-            inputs.append(state)
-            targets.append(target)
-
-        # TODO: Inefficient recomputation of outputs
-        self.model.fit(np.array(inputs), np.array(targets), verbose=0)
+            # TODO: Inefficient recomputation of outputs
+            self.model.fit(inputs, targets, verbose=0)
+            loss = self.model.evaluate(inputs, targets, verbose=0)
 
         if self.i % self.target_update_interval:
             sess = K.get_session()
             sess.run(self.update_target_model)
 
         self.i += 1
+        return loss
 
     def load(self):
         try:

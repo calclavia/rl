@@ -17,21 +17,22 @@ num_episodes = 10000
 for e in range(num_episodes):
     state = env.reset()
     done = False
-    total_reward = 0.0
+    total_loss = 0
+    total_reward = 0
     t = time.time()
 
     while not done:
         #env.render()
         # Choose an action
-        action, prev_state = agent.choose(state)
+        action, prev_state, action_predictions = agent.choose(state)
         # Perform action
         state, reward, done, info = env.step(action)
         # Observe results of chosen action
-        agent.observe(prev_state, action, reward, state, done)
+        agent.observe(prev_state, action, reward, state, action_predictions, done)
         # Learn based on past experience
-        agent.learn()
+        total_loss += agent.learn()
         total_reward += reward
 
-    print('Episode {}: Reward={} Time={}'.format(e, total_reward, time.time() - t))
+    print('Episode {}: Reward={} Loss={} Time={}'.format(e, total_reward, total_loss, time.time() - t))
 
 #env.monitor.close()
