@@ -5,16 +5,16 @@ class Agent:
         self.ob_space = ob_space
         self.action_space = action_space
 
-    def fit(self, env, num_episodes, render=False):
+    def run(self, env, num_episodes, render=False, learn=True):
         """
         Fits this agent to the environment
         """
         mean_reward = None
 
         for self.num_ep in range(num_episodes):
-            mean_reward = self.fit_episode(env, mean_reward)
+            mean_reward = self.run_episode(env, mean_reward, render, learn)
 
-    def fit_episode(self, env, mean_reward, render=False):
+    def run_episode(self, env, mean_reward, render=False, learn=True):
         observation = env.reset()
         done = False
         total_reward = 0
@@ -27,8 +27,10 @@ class Agent:
             action = self.forward(observation)
             # Perform action
             observation, reward, done, info = env.step(action)
-            # Observe results of chosen action
-            self.backward(reward, done)
+
+            if learn:
+                # Observe results of chosen action
+                self.backward(reward, done)
             total_reward += reward
 
         if mean_reward is None:

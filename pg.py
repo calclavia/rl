@@ -18,7 +18,7 @@ class PGAgent(Agent):
         # Training buffer
         self.input_buffer, self.target_buffer = [], []
 
-    def fit_episode(self, env, mean_reward, render=False):
+    def run_episode(self, env, mean_reward, render=False, learn=True):
         # reset array memory
         self.targets, self.rewards = [], []
 
@@ -27,7 +27,7 @@ class PGAgent(Agent):
         for _ in range(self.time_steps - 1):
             self.temporal_memory.append(np.zeros(self.ob_space.shape))
 
-        return super().fit_episode(env, mean_reward, False)
+        return super().run_episode(env, mean_reward, render and self.num_ep % self.batch_size == 0, learn)
 
     def forward(self, observation):
         # forward the policy network and sample an action from the returned
