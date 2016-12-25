@@ -1,27 +1,18 @@
 """ Trains an agent with (stochastic) Policy Gradients on Pong. Uses OpenAI Gym. """
 import numpy as np
 from keras.models import Model
-from keras.layers import Dense, Input, merge
+from keras.layers import Dense, Input, Flatten
+from keras.layers.recurrent import LSTM
 from keras.optimizers import RMSprop
+from optparse import OptionParser
+from collections import deque
 import gym
 
-inputs = Input(shape=(4,))
-x = Dense(20, activation='relu')(inputs)
-outputs = Dense(2, activation='softmax')(x)
-
-model = Model(inputs, outputs)
-
-# Compile for regression task
-model.compile(
-    optimizer=RMSprop(lr=1e-4, clipvalue=1),
-    loss='categorical_crossentropy'
-)
-
 # hyperparameters
-discount = 1  # discount factor for reward
+discount = 0.9  # discount factor for reward
 batch_size = 32
+time_steps = 10
 render = False
-
 
 def discount_rewards(rewards):
     """ Take 1D float array of rewards and compute discounted reward """
@@ -34,33 +25,61 @@ def discount_rewards(rewards):
 
     return discounted_r
 
-env = gym.make("CartPole-v0")
+parser = OptionParser()
+parser.add_option("-e", "--env",  help="Gym Environment")
+
+(options, args) = parser.parse_args()
+
+env = gym.make(options.env)
+
+# Build Network
+inputs = Input(shape=(time_steps,) + env.observation_space.shape, name='Input')
+x = LSTM(20, activation='relu', name='Hidden')(inputs)
+outputs = Dense(2, activation='softmax', name='Output')(x)
+
+model = Model(inputs, outputs)
+
+# Compile for regression task
+model.compile(
+    optimizer=RMSprop(lr=1e-4, clipvalue=1),
+    loss='categorical_crossentropy'
+)
 
 running_reward = None
 num_ep = 0
+max_frames = 10000
 
 input_buffer = []
 target_buffer = []
 
-while running_reward == None or running_reward < 1000:
+while running_reward == None or running_reward < 100:
     done = False
     reward_sum = 0
     observation = env.reset()  # reset env
 
     # reset array memory
-    states, targets, rewards = [], [], []
+    targets, rewards = [], []
 
-    while not done:
+    queue = deque(maxlen=time_steps)
+    for _ in range(time_steps - 1):
+        queue.append(np.zeros_like(observation))
+    queue.append(observation)
+
+    i = 0
+
+    while not done and i < max_frames:
+        i += 1
         if render:
             env.render()
 
         # forward the policy network and sample an action from the returned
         # probability
-        prob_dist = model.predict(np.array([observation]))[0]
+        prob_dist = model.predict(np.array([list(queue)]))[0]
         action = np.random.choice(prob_dist.size, p=prob_dist)
 
-        # record various intermediates (needed later for backprop)
-        states.append(observation)  # observation
+        # record various intermediates
+        input_buffer.append(list(queue))
+        queue.append(observation)
 
         # grad that encourages the action that was taken to be taken (see
         # http://cs231n.github.io/neural-networks-2/#losses if confused)
@@ -88,15 +107,14 @@ while running_reward == None or running_reward < 1000:
 
     # z-score the rewards to be unit normal (variance control)
     # TODO: Seems like disabling this still allows it to work!
-    #discounted_rewards -= np.mean(discounted_rewards)
-    #discounted_rewards /= np.std(discounted_rewards)
+    discounted_rewards -= np.mean(discounted_rewards)
+    discounted_rewards /= np.std(discounted_rewards)
 
     # modulate the gradient with advantage (PG magic happens right here.)
     # TODO: Is modulating the targe equiv? Maybe need to adjust loss func
     targets *= discounted_rewards
 
     # Buffer
-    input_buffer += states
     target_buffer += targets.tolist()
 
     if num_ep % batch_size == 0:
@@ -117,26 +135,3 @@ while running_reward == None or running_reward < 1000:
 
     print('Episode {}: Reward: {} Mean: {}'.format(
         num_ep, reward_sum, running_reward))
-
-
-def test():
-    done = False
-    reward_sum = 0
-    observation = env.reset()  # reset env
-    while not done:
-        env.render()
-
-        # preprocess the observation
-        x = prepro(observation)
-
-        # forward the policy network and sample an action from the returned
-        # probability
-        aprob, h = policy_forward(x)
-        action = 1 if np.random.uniform() > aprob else 0
-        # step the environment and get new measurements
-        observation, reward, done, info = env.step(action)
-        reward_sum += reward
-    print('Reward: {}'.format(reward_sum))
-
-while True:
-    test()
