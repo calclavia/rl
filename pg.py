@@ -1,136 +1,114 @@
 """ Trains an agent with (stochastic) Policy Gradients on Pong. Uses OpenAI Gym. """
 import numpy as np
+from keras.models import Model
+from keras.layers import Dense, Input, merge
+from keras.optimizers import RMSprop
 import gym
 
+inputs = Input(shape=(4,))
+x = Dense(20, activation='relu')(inputs)
+outputs = Dense(2, activation='softmax')(x)
+
+model = Model(inputs, outputs)
+
+# Compile for regression task
+model.compile(
+    optimizer=RMSprop(lr=1e-4, clipvalue=1),
+    loss='categorical_crossentropy'
+)
+
 # hyperparameters
-H = 20  # number of hidden layer neurons
-batch_size = 10  # every how many episodes to do a param update?
-learning_rate = 1e-4
-gamma = 1  # discount factor for reward
-decay_rate = 0.99  # decay factor for RMSProp leaky sum of grad^2
+discount = 1  # discount factor for reward
+batch_size = 32
 render = False
 
-# model initialization
-D = 4
-model = {}
-model['W1'] = np.random.randn(H, D) / np.sqrt(D)  # "Xavier" initialization
-model['W2'] = np.random.randn(H) / np.sqrt(H)
 
-# update buffers that add up gradients over a batch
-grad_buffer = {k: np.zeros_like(v) for k, v in model.items()}
-# rmsprop memory
-rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()}
+def discount_rewards(rewards):
+    """ Take 1D float array of rewards and compute discounted reward """
+    discounted_r = np.zeros_like(rewards)
+    current = 0
 
-def sigmoid(x):
-    # sigmoid "squashing" function to interval [0,1]
-    return 1.0 / (1.0 + np.exp(-x))
+    for t in reversed(range(len(rewards))):
+        current = current * discount + rewards[t]
+        discounted_r[t] = current
 
-
-def prepro(I):
-    return I
-
-
-def discount_rewards(r):
-    """ take 1D float array of rewards and compute discounted reward """
-    discounted_r = np.zeros_like(r)
-    running_add = 0
-    for t in reversed(range(r.size)):
-        running_add = running_add * gamma + r[t]
-        discounted_r[t] = running_add
     return discounted_r
-
-
-def policy_forward(x):
-    h = np.dot(model['W1'], x)
-    h[h < 0] = 0  # ReLU nonlinearity
-    logp = np.dot(model['W2'], h)
-    p = sigmoid(logp)
-    return p, h  # return probability of taking action 2, hidden state
-
-
-def policy_backward(eph, epdlogp):
-    """ backward pass. (eph is array of intermediate hidden states) """
-    dW2 = np.dot(eph.T, epdlogp).ravel()
-    dh = np.outer(epdlogp, model['W2'])
-    dh[eph <= 0] = 0  # backpro prelu
-    dW1 = np.dot(dh.T, epx)
-    return {'W1': dW1, 'W2': dW2}
 
 env = gym.make("CartPole-v0")
 
 running_reward = None
 num_ep = 0
 
+input_buffer = []
+target_buffer = []
+
 while running_reward == None or running_reward < 300:
     done = False
     reward_sum = 0
     observation = env.reset()  # reset env
 
-    xs, hs, dlogps, drs = [], [], [], []  # reset array memory
+    # reset array memory
+    states, targets, rewards = [], [], []
 
     while not done:
         if render:
             env.render()
 
-        # preprocess the observation
-        x = prepro(observation)
-
         # forward the policy network and sample an action from the returned
         # probability
-        aprob, h = policy_forward(x)
-        action = 1 if np.random.uniform() > aprob else 0
+        prob_dist = model.predict(np.array([observation]))[0]
+        action = np.random.choice(prob_dist.size, p=prob_dist)
 
         # record various intermediates (needed later for backprop)
-        xs.append(x)  # observation
-        hs.append(h)  # hidden state
+        states.append(observation)  # observation
 
         # grad that encourages the action that was taken to be taken (see
         # http://cs231n.github.io/neural-networks-2/#losses if confused)
-        target = action  # a "fake label"
+        # a "fake label"
+        target = np.array(
+            [1. if action == i else 0. for i in range(len(prob_dist))])
 
-        dlogps.append(target - aprob)
+        targets.append(target)
 
         # step the environment and get new measurements
         observation, reward, done, info = env.step(action)
         reward_sum += reward
 
-        # record reward (has to be done after we call step() to get reward for
-        # previous action)
-        drs.append(reward)
+        # record reward
+        rewards.append(reward)
+
     num_ep += 1
-    # stack together all inputs, hidden states, action gradients, and
-    # rewards for this episode
-    epx = np.vstack(xs)
-    eph = np.vstack(hs)
-    epdlogp = np.vstack(dlogps)
-    epr = np.vstack(drs)
+
+    # all inputs, action gradients, and rewards
+    targets = np.vstack(targets)
+    rewards = np.vstack(rewards)
 
     # compute the discounted reward backwards through time
-    discounted_epr = discount_rewards(epr)
-    # standardize the rewards to be unit normal (helps control the gradient
-    # estimator variance)
-    discounted_epr -= np.mean(discounted_epr)
-    discounted_epr /= np.std(discounted_epr)
+    discounted_rewards = discount_rewards(rewards)
+
+    # z-score the rewards to be unit normal (variance control)
+    discounted_rewards -= np.mean(discounted_rewards)
+    discounted_rewards /= np.std(discounted_rewards)
 
     # modulate the gradient with advantage (PG magic happens right here.)
-    epdlogp *= discounted_epr
-    grad = policy_backward(eph, epdlogp)
+    # TODO: Is modulating the targe equiv? Maybe need to adjust loss func
+    targets *= discounted_rewards
 
-    for k in model:
-        grad_buffer[k] += grad[k]  # accumulate grad over batch
+    # Buffer
+    input_buffer += states
+    target_buffer += targets.tolist()
 
-    # perform rmsprop parameter update every batch_size episodes
     if num_ep % batch_size == 0:
-        for k, v in model.items():
-            g = grad_buffer[k]  # gradient
-            rmsprop_cache[k] = decay_rate * \
-                rmsprop_cache[k] + (1 - decay_rate) * g**2
-            model[k] += learning_rate * g / \
-                (np.sqrt(rmsprop_cache[k]) + 1e-5)
-            # reset batch gradient buffer
-            grad_buffer[k] = np.zeros_like(v)
+        input_buffer = np.array(input_buffer)
+        target_buffer = np.array(target_buffer)
 
-    # boring book-keeping
+        # TODO: Seems like epochs actually improve training speed?
+        model.fit(input_buffer, target_buffer, verbose=0, nb_epoch=1)
+
+        input_buffer = []
+        target_buffer = []
+
+    # book-keeping
     if running_reward is None:
         running_reward = reward_sum
 
