@@ -46,7 +46,7 @@ class DiscreteA3CAgent:
 
                 # Accumulate gradients
                 grad_policy += np.log(policy_dist) * (R - self.value.predict([state])[0])
-                grad_value += ?
+                grad_value += 0 # TODO
 
 def get_trainable_params(model):
     params = []

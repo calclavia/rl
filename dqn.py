@@ -6,7 +6,7 @@ from keras.optimizers import RMSprop
 from keras import backend as K
 from collections import deque
 
-class Agent:
+class DQNAgent:
     def __init__(self,
                  state_shape,
                  num_actions,
