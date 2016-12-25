@@ -8,8 +8,8 @@ from collections import deque
 
 class Agent:
     def __init__(self,
-                 state_shape=None,
-                 num_actions=1,
+                 state_shape,
+                 num_actions,
                  start_epsilon=1,
                  end_epsilon=0.1,
                  anneal_steps=1000000,
@@ -61,12 +61,12 @@ class Agent:
         """
         model = Sequential()
         model.add(Dense(20, input_shape=self.state_shape, activation='tanh'))
-        model.add(Dense(20, input_shape=self.state_shape, activation='tanh'))
+        model.add(Dense(20, activation='tanh'))
         model.add(Dense(self.num_actions))
 
         # Compile for regression task
         model.compile(
-            optimizer=RMSprop(lr=1e-4),
+            optimizer=RMSprop(lr=1e-4, clipvalue=1),
             loss='mean_squared_error'
         )
 

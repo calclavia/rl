@@ -13,10 +13,19 @@ env = gym.make(options.env)
 #env.monitor.start('/tmp/cartpole-experiment-1')
 
 # Create an agent based on the environment.
-agent = Agent(
-    state_shape=env.observation_space.shape,
-    num_actions=env.action_space.n
-)
+print(env.observation_space, env.action_space)
+
+def shape_from_space(space):
+    if isinstance(space, gym.spaces.Tuple):
+        return tuple(map(shape_from_space, space.spaces))
+    if isinstance(space, gym.spaces.Box):
+        return space.shape
+    return space.n
+
+state_shape = shape_from_space(env.observation_space)
+num_actions = shape_from_space(env.action_space)
+
+agent = Agent(state_shape, num_actions)
 
 num_episodes = 10000
 
