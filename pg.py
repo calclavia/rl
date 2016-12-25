@@ -42,7 +42,7 @@ num_ep = 0
 input_buffer = []
 target_buffer = []
 
-while running_reward == None or running_reward < 300:
+while running_reward == None or running_reward < 1000:
     done = False
     reward_sum = 0
     observation = env.reset()  # reset env
@@ -87,8 +87,9 @@ while running_reward == None or running_reward < 300:
     discounted_rewards = discount_rewards(rewards)
 
     # z-score the rewards to be unit normal (variance control)
-    discounted_rewards -= np.mean(discounted_rewards)
-    discounted_rewards /= np.std(discounted_rewards)
+    # TODO: Seems like disabling this still allows it to work!
+    #discounted_rewards -= np.mean(discounted_rewards)
+    #discounted_rewards /= np.std(discounted_rewards)
 
     # modulate the gradient with advantage (PG magic happens right here.)
     # TODO: Is modulating the targe equiv? Maybe need to adjust loss func
