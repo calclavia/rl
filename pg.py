@@ -1,27 +1,57 @@
 """ Trains an agent with (stochastic) Policy Gradients on Pong. Uses OpenAI Gym. """
 import numpy as np
+from keras.models import Model
+from keras.layers import Dense, Input, Flatten
+from keras.layers.recurrent import LSTM
+from keras.optimizers import RMSprop
+from keras import backend as K
 from collections import deque
 from agent import Agent
 from util import *
 
 
+def build_model(input_shape, time_steps, num_h=20, num_outputs=2):
+    # Build Network
+    inputs = Input(shape=(time_steps,) + input_shape, name='input')
+    x = LSTM(num_h, activation='relu', name='hidden')(inputs)
+    outputs = Dense(num_outputs, activation='softmax', name='output')(x)
+
+    advantages = Input(shape=(None,), name='advantages')
+
+    model = Model(inputs, outputs)
+
+    train_model = Model([inputs, advantages], outputs)
+
+    def policy_loss(target, output):
+        import tensorflow as tf
+        # Weight target by the advantages
+        return K.categorical_crossentropy(output, tf.diag(advantages) * target)
+
+    train_model.compile(RMSprop(), policy_loss)
+    print(model.summary())
+    return model, train_model
+
+
 class PGAgent(Agent):
 
-    def __init__(self, ob_space, action_space, discount=0.9, batch_size=32, time_steps=5):
+    def __init__(self, ob_space, action_space, discount=0.99, batch_size=10, time_steps=5):
         super().__init__(ob_space, action_space)
         self.discount = discount
         self.batch_size = batch_size
         self.time_steps = time_steps
 
-        self.model = build_rnn(ob_space.shape, self.time_steps)
+        self.model, self.train_model = build_model(
+            ob_space.shape, self.time_steps)
+        # self.train = build_loss(self.model)
 
-        # Training buffer
-        self.input_buffer, self.target_buffer = [], []
+        # Observations made
+        self.observations = []
+        # Actions taken
+        self.actions = []
+        # Rewards received
+        self.rewards = []
 
     def run_episode(self, env, mean_reward, render=False, learn=True):
-        # reset array memory
-        self.targets, self.rewards = [], []
-
         # Fill in temporal memory
         self.temporal_memory = deque(maxlen=self.time_steps)
         for _ in range(self.time_steps - 1):
@@ -39,14 +69,11 @@ class PGAgent(Agent):
         action = np.random.choice(prob_dist.size, p=prob_dist)
 
         # record various intermediates
-        self.input_buffer.append(x)
+        self.observations.append(x)
 
-        # grad that encourages the action that was taken to be taken (see
-        # http://cs231n.github.io/neural-networks-2/#losses if confused)
-        # a "fake label"
-        target = [1. if action == i else 0. for i in range(len(prob_dist))]
-
-        self.targets.append(target)
+        y = np.zeros(self.action_space.n)
+        y[action] = 1
+        self.actions.append(y)
         return action
 
     def backward(self, reward, terminal):
@@ -54,27 +81,22 @@ class PGAgent(Agent):
         self.rewards.append(reward)
 
         if terminal:
-            # all inputs, action gradients, and rewards
-            targets = np.vstack(self.targets)
-            rewards = np.vstack(self.rewards)
+            if self.num_ep > 0 and self.num_ep % self.batch_size == 0:
+                # compute the discounted reward backwards through time
+                discounted_rewards = discount_rewards(
+                    self.rewards, self.discount
+                )
 
-            # compute the discounted reward backwards through time
-            discounted_rewards = z_score(discount_rewards(rewards, self.discount))
+                advantages = z_score(discounted_rewards)
+                targets = np.array(self.actions)
 
-            # modulate the gradient with advantage (PG magic happens right here.)
-            # TODO: Is modulating the targe equiv? Maybe need to adjust loss
-            # func
-            targets *= discounted_rewards
+                self.train_model.fit(
+                    [np.array(self.observations), advantages],
+                    targets,
+                    nb_epoch=1,
+                    verbose=0
+                )
 
-            # Buffer
-            self.target_buffer += targets.tolist()
-
-            if self.num_ep % self.batch_size == 0:
-                input_buffer = np.array(self.input_buffer)
-                target_buffer = np.array(self.target_buffer)
-
-                # TODO: Seems like epochs actually improve training speed?
-                self.model.fit(input_buffer, target_buffer, verbose=0, nb_epoch=1)
-
-                self.input_buffer = []
-                self.target_buffer = []
+                self.observations = []
+                self.actions = []
+                self.rewards = []

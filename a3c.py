@@ -5,13 +5,14 @@ from keras.layers import Dense, Input, Flatten
 from keras.optimizers import RMSprop
 from keras import backend as K
 
+
 class DiscreteA3CAgent:
-    def __init__(self, input_shape, num_actions, discount=0.9):
-        self.input_shape = input_shape
-        self.num_actions = num_actions
+
+    def __init__(self, ob_space, action_space, discount=0.9, batch_size=32):
+        super().__init__(ob_space, action_space)
         self.discount = discount
-        # TODO: 2 separate nets are better?
-        self.policy, self.value = build_network(input_shape, num_actions)
+
+        self.policy, self.value = build_network(ob_space.shape, action_space.n)
 
         # Initialize experience
         self.states = []
@@ -45,14 +46,9 @@ class DiscreteA3CAgent:
                 R = reward + self.discount * R
 
                 # Accumulate gradients
-                grad_policy += np.log(policy_dist) * (R - self.value.predict([state])[0])
-                grad_value += 0 # TODO
-
-def get_trainable_params(model):
-    params = []
-    for layer in model.layers:
-        params += keras.engine.training.collect_trainable_weights(layer)
-    return params
+                grad_policy += np.log(policy_dist) * \
+                    (R - self.value.predict([state])[0])
+                grad_value += 0  # TODO
 
 def build_network(input_shape, num_actions):
     # TODO: Consider LSTMs
@@ -66,17 +62,12 @@ def build_network(input_shape, num_actions):
     value_output = Dense(1, activation='linear')(x)
 
     policy_model = Model(inputs, policy_output)
-    policy_model.compile(loss='mse', optimizer=RMSprop(lr=0.1))
+    policy_model.compile(
+        loss='categorical_crossentropy', optimizer=RMSprop(lr=1e-4, clipvalue=1)
+    )
 
     value_model = Model(inputs, value_output)
-    value_model.compile(loss='mse', optimizer=RMSprop(lr=0.1))
+    value_model.compile(
+        loss='mse', optimizer=RMSprop(lr=1e-4, clipvalue=1)
+    )
     return policy_model, value_model
-
-import unittest
-
-class TestDiscreteA3CAgent(unittest.TestCase):
-    def test_init(self):
-        agent = DiscreteA3CAgent((4,), 2)
-
-if __name__ == '__main__':
-    unittest.main()
