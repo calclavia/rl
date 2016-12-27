@@ -1,4 +1,6 @@
 import time
+import numpy as np
+from collections import deque
 
 class Agent:
     def __init__(self, ob_space, action_space):
@@ -9,12 +11,12 @@ class Agent:
         """
         Fits this agent to the environment
         """
-        mean_reward = None
+        self.total_rewards = deque(maxlen=100)
 
         for self.num_ep in range(num_episodes):
-            mean_reward = self.run_episode(env, mean_reward, render, learn)
+            self.run_episode(env, render, learn)
 
-    def run_episode(self, env, mean_reward, render=False, learn=True):
+    def run_episode(self, env, render=False, learn=True):
         observation = env.reset()
         done = False
         total_reward = 0
@@ -35,19 +37,14 @@ class Agent:
             total_reward += reward
             self.step += 1
 
-        if mean_reward is None:
-            mean_reward = total_reward
-
-        mean_reward = mean_reward * 0.99 + total_reward * 0.01
+        self.total_rewards.append(total_reward)
 
         print('Episode {}: Reward={} ({}) Time={}'.format(
             self.num_ep,
             total_reward,
-            mean_reward,
+            np.mean(self.total_rewards),
             time.time() - t
         ))
-
-        return mean_reward
 
     def forward(self, observation):
         pass
