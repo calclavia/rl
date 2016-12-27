@@ -8,10 +8,11 @@ from collections import deque
 from agent import Agent
 from util import *
 
+
 def build_model(input_shape, num_outputs, time_steps, num_h=30):
     # Build Network
-    inputs = Input(shape=(time_steps,) + input_shape, name='input')
-    x = LSTM(num_h, activation='relu', name='hidden')(inputs)
+    inputs, x = build_rnn(input_shape, num_outputs, time_steps, num_h)
+
     policy_outputs = Dense(num_outputs, activation='softmax', name='output')(x)
     value_output = Dense(1, activation='linear')(x)
 
@@ -20,19 +21,19 @@ def build_model(input_shape, num_outputs, time_steps, num_h=30):
     model = Model(inputs, policy_outputs)
     # Policy model
     policy_model = Model([inputs, advantages], policy_outputs)
-
-    policy_model.compile(RMSprop(1e-4), policy_loss(advantages))
+    policy_model.compile(RMSprop(1e-5), policy_loss(advantages))
 
     # Value model
     value_model = Model(inputs, value_output)
-    value_model.compile(RMSprop(1e-4), 'mse')
+    value_model.compile(RMSprop(1e-5), 'mse')
+
     print(model.summary())
     return model, policy_model, value_model
 
 
 class DiscreteA2CAgent(Agent):
 
-    def __init__(self, ob_space, action_space, discount=0.99, batch_size=32, time_steps=5):
+    def __init__(self, ob_space, action_space, discount=0.99, batch_size=2, time_steps=1):
         super().__init__(ob_space, action_space)
         self.discount = discount
         self.batch_size = batch_size
@@ -55,6 +56,8 @@ class DiscreteA2CAgent(Agent):
 
         self.values = deque(maxlen=100)
         self.td_errors = deque(maxlen=100)
+
+        self.multiplier = 1
 
     def run_episode(self, env, render=False, learn=True):
         # Fill in temporal memory
@@ -96,9 +99,8 @@ class DiscreteA2CAgent(Agent):
 
             next_values = self.value.predict(next_states).T[0]
             target_values = rewards + self.discount * terminals * next_values
-
+            #print(rewards, current_states, target_values)
             # Learn critic from TD-error
-            # TODO: Seems like TD error is decreasing correctly
             self.value.fit(
                 current_states,
                 target_values,
@@ -110,11 +112,11 @@ class DiscreteA2CAgent(Agent):
             current_values = self.value.predict(current_states).T[0]
             td_error = target_values - current_values
             self.values.append(np.mean(current_values))
-            self.td_errors.append(np.mean(td_error))
+            self.td_errors.append(np.mean(np.abs(td_error)))
 
             # TODO: Decay
             # The advantage is the TD error
-            advantages = z_score(td_error)
+            advantages = self.multiplier * td_error
             targets = np.array(self.actions[:-1])
 
             self.policy.fit(
@@ -124,8 +126,27 @@ class DiscreteA2CAgent(Agent):
                 verbose=0
             )
 
-        if terminal:
-            print('Average value: {}, TD error: {}'.format(np.mean(self.values), np.mean(self.td_errors)))
+            # Clear data
+            self.observations = self.observations[-1:]
+            self.actions = self.actions[-1:]
+            self.rewards = self.rewards[-1:]
+            self.terminals = self.terminals[-1:]
+
+            self.multiplier *= self.discount
+
+        if terminal and len(self.values) > 0:
+            print('Average value: {}, TD error: {}'.format(
+                np.mean(self.values), np.mean(np.abs(self.td_errors))))
+
+            # TODO: Printing out all possible states
+            all_states = [[one_hot(i, 16)] for i in range(16)]
+            print('Value Table')
+            print(self.value.predict(all_states).reshape(4, 4))
+
+            print('Policy Table')
+            policies = self.model.predict(all_states)
+            policies = np.argmax(policies, axis=1)
+            print(policies.reshape(4, 4))
 
         """
         R = 0

@@ -7,9 +7,12 @@ from collections import deque
 from agent import Agent
 from util import *
 
+
 def build_model(input_shape, num_outputs, time_steps, num_h=30):
     # Build Network
-    inputs, outputs = build_rnn(input_shape, num_outputs, time_steps, num_h)
+    inputs, x = build_rnn(input_shape, num_outputs, time_steps, num_h)
+    outputs = Dense(num_outputs, activation='softmax', name='output')(x)
+
     advantages = Input(shape=(None,), name='advantages')
 
     model = Model(inputs, outputs)
@@ -18,6 +21,7 @@ def build_model(input_shape, num_outputs, time_steps, num_h=30):
     train_model.compile(RMSprop(clipvalue=1), policy_loss(advantages))
     print(model.summary())
     return model, train_model
+
 
 class PGAgent(Agent):
 
