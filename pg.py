@@ -24,8 +24,13 @@ def build_model(input_shape, time_steps, num_h=20, num_outputs=2):
 
     def policy_loss(target, output):
         import tensorflow as tf
+        # Target is a one-hot vector of actual action taken
         # Weight target by the advantages
-        return K.categorical_crossentropy(output, tf.diag(advantages) * target)
+        policy_loss = K.categorical_crossentropy(
+            output, tf.diag(advantages) * target
+        )
+
+        return policy_loss
 
     train_model.compile(RMSprop(), policy_loss)
     print(model.summary())
@@ -41,8 +46,8 @@ class PGAgent(Agent):
         self.time_steps = time_steps
 
         self.model, self.train_model = build_model(
-            ob_space.shape, self.time_steps)
-        # self.train = build_loss(self.model)
+            ob_space.shape, self.time_steps
+        )
 
         # Observations made
         self.observations = []
@@ -76,7 +81,7 @@ class PGAgent(Agent):
         self.actions.append(y)
         return action
 
-    def backward(self, reward, terminal):
+    def backward(self, observation, reward, terminal):
         # record reward
         self.rewards.append(reward)
 

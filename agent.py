@@ -19,6 +19,7 @@ class Agent:
         done = False
         total_reward = 0
         t = time.time()
+        self.step = 0
 
         while not done:
             if render:
@@ -30,8 +31,9 @@ class Agent:
 
             if learn:
                 # Observe results of chosen action
-                self.backward(reward, done)
+                self.backward(observation, reward, done)
             total_reward += reward
+            self.step += 1
 
         if mean_reward is None:
             mean_reward = total_reward
