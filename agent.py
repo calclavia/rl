@@ -31,7 +31,7 @@ class Agent:
         """
         Creates an environment for the agent to run in
         """
-        self.total_rewards = deque(maxlen=100)
+        self.total_rewards = deque(maxlen=1000)
 
         for self.num_ep in range(num_episodes):
             self.run_episode(env, render, learn)

@@ -23,6 +23,7 @@ learn = False if options.run else True
 
 time_steps = 1
 num_hidden = 100
+layers = 10
 
 # Create an agent based on the environment space.
 agent = globals()[options.agent](
@@ -32,15 +33,17 @@ agent = globals()[options.agent](
 )
 
 if time_steps > 1:
-    agent.compile(simple_rnn(
+    agent.compile(rnn(
         space_to_shape(env.observation_space),
         time_steps,
-        num_hidden
+        num_hidden,
+        layers
     ))
 else:
-    agent.compile(simple_deep(
+    agent.compile(dense(
         space_to_shape(env.observation_space),
-        num_hidden
+        num_hidden,
+        layers
     ))
 
 agent.run(env, 10000, render=False, learn=learn)
