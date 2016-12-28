@@ -22,7 +22,7 @@ class A2CAgent(Agent):
         # Replace compute_advantage function
         adv = self.actor.compute_advantage
         self.actor.compute_advantage = \
-            lambda: adv() - self.critic.model.predict(self.exp.get_states()).T[0]
+            lambda: adv() - self.critic.model.predict(np.array(self.exp.get_states())).T[0]
 
     def compile(self, model):
         self.critic.compile(model)

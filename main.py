@@ -6,7 +6,9 @@ from a2c import *
 from critic import *
 from async import *
 from optparse import OptionParser
-from experience import TemporalExperience
+from experience import *
+
+import relay_generator
 
 parser = OptionParser()
 parser.add_option("-e", "--env",  help="Gym Environment")
@@ -19,21 +21,27 @@ env = gym.make(options.env)
 # env.monitor.start('/tmp/cartpole-experiment-1')
 learn = False if options.run else True
 
-time_steps = 10
-num_hidden = 50
+time_steps = 1
+num_hidden = 100
 
 # Create an agent based on the environment space.
 agent = globals()[options.agent](
     env.observation_space,
     env.action_space,
-    TemporalExperience(env.observation_space,  env.action_space, time_steps)
+    TemporalExperience(env.observation_space,  env.action_space, time_steps) if time_steps > 1 else Experience(env.observation_space,  env.action_space)
 )
 
-agent.compile(simple_rnn(
-    space_to_shape(env.observation_space),
-    time_steps,
-    num_hidden
-))
+if time_steps > 1:
+    agent.compile(simple_rnn(
+        space_to_shape(env.observation_space),
+        time_steps,
+        num_hidden
+    ))
+else:
+    agent.compile(simple_deep(
+        space_to_shape(env.observation_space),
+        num_hidden
+    ))
 
 agent.run(env, 10000, render=False, learn=learn)
 

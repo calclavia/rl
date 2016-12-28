@@ -25,6 +25,10 @@ def space_to_shape(space):
     if isinstance(space, spaces.Discrete):
         # One hot vectors of states
         return (space.n,)
+
+    if isinstance(space, spaces.Tuple):
+        return (len(space.spaces),)
+
     return space.shape
 
 def action_to_shape(space):
