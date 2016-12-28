@@ -18,7 +18,7 @@ def build_model(input_shape, num_outputs, time_steps, num_h=30):
     model = Model(inputs, outputs)
 
     train_model = Model([inputs, advantages], outputs)
-    train_model.compile(RMSprop(clipvalue=1), policy_loss(advantages))
+    train_model.compile(RMSprop(), policy_loss_no_ent(advantages))
     print(model.summary())
     return model, train_model
 

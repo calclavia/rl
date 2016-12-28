@@ -5,14 +5,6 @@ import numpy as np
 from gym import spaces
 
 
-def policy_loss(advantage):
-    def categorical_crossentropy(y_true, y_pred):
-        '''Expects a binary class matrix instead of a vector of scalar classes.
-        '''
-        return advantage * K.categorical_crossentropy(y_pred, y_true)
-    return categorical_crossentropy
-
-
 def discount_rewards(rewards, discount):
     """ Takes an array of rewards and compute array of discounted reward """
     discounted_r = np.zeros_like(rewards)
@@ -48,8 +40,18 @@ def action_to_shape(space):
 def one_hot(index, size):
     return [1 if index == i else 0 for i in range(size)]
 
-
 def policy_loss(advantages):
+    def loss(target, output):
+        import tensorflow as tf
+        # Target is a one-hot vector of actual action taken
+        # Crossentropy weighted by advantage
+        responsible_outputs = K.sum(output * target, 1)
+        policy_loss = -K.sum(K.log(responsible_outputs) * advantages)
+        entropy = -K.sum(output * K.log(output), 1)
+        return policy_loss - 0.01 * entropy
+    return loss
+
+def policy_loss_no_ent(advantages):
     def loss(target, output):
         import tensorflow as tf
         # Target is a one-hot vector of actual action taken
@@ -67,5 +69,5 @@ def build_rnn(input_shape, num_outputs, time_steps, num_h):
     # Build Network
     inputs = Input(shape=(time_steps,) + input_shape, name='input')
     x = LSTM(num_h, activation='relu', name='hidden1')(inputs)
-    x = Dropout(0.5)(x)
+    x = Dropout(0.25)(x)
     return inputs, x
