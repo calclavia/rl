@@ -4,6 +4,7 @@ from dqn import *
 from pg import *
 from a2c import *
 from critic import *
+from async import *
 from optparse import OptionParser
 from experience import TemporalExperience
 
@@ -16,11 +17,10 @@ parser.add_option("-r", "--run",  help="Run mode (no training)")
 
 env = gym.make(options.env)
 # env.monitor.start('/tmp/cartpole-experiment-1')
-
 learn = False if options.run else True
 
-time_steps = 5
-num_hidden = 20
+time_steps = 4
+num_hidden = 15
 
 # Create an agent based on the environment space.
 agent = globals()[options.agent](
