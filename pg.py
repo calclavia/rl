@@ -3,32 +3,13 @@ from keras.models import Model
 from keras.layers import Dense, Input
 from keras.optimizers import RMSprop
 from keras import backend as K
-from collections import deque
 from agent import Agent
 from util import *
-
 
 class PGAgent(Agent):
     """
     Policy gradient agent
     """
-
-    def __init__(self, ob_space, action_space, time_steps=5):
-        super().__init__(ob_space, action_space)
-        self.time_steps = time_steps
-
-        # Observations made
-        self.observations = []
-        # Actions taken
-        self.actions = []
-        # Rewards received
-        self.rewards = []
-
-        # Fill in temporal memory
-        self.temporal_memory = deque(maxlen=self.time_steps)
-        for _ in range(self.time_steps - 1):
-            self.temporal_memory.append(np.zeros(space_to_shape(self.ob_space)))
-
     def compile(self, model):
         num_outputs = action_to_shape(self.action_space)
 
@@ -39,38 +20,34 @@ class PGAgent(Agent):
 
         # Prediction model
         self.model = Model(inputs, outputs)
+
         # Training model
+        def loss(target, output):
+            # Target is a one-hot vector of actual action taken
+            # Crossentropy weighted by advantage
+            responsible_outputs = K.sum(output * target, 1)
+            policy_loss = -K.sum(K.log(responsible_outputs) * advantages)
+            entropy = -K.sum(output * K.log(output), 1)
+            return policy_loss - 0.01 * entropy
+
         self.trainer = Model([inputs, advantages], outputs)
-        self.trainer.compile(RMSprop(), policy_loss(advantages))
+        self.trainer.compile(RMSprop(), loss)
 
-
-    def forward(self, observation):
+    def choose(self):
         """
         Choose an action according to the policy
         """
-        # TODO: Abstract the temporal memory to agent
-        observation = preprocess(observation, self.ob_space)
-        self.temporal_memory.append(observation)
-
-        state = list(self.temporal_memory)
+        state = self.exp.get_state()
         prob_dist = self.model.predict(np.array([state]))[0]
-        action = np.random.choice(prob_dist.size, p=prob_dist)
+        return np.random.choice(prob_dist.size, p=prob_dist)
 
-        # record data
-        self.observations.append(state)
-        self.actions.append(one_hot(action, self.action_space.n))
-        return action
-
-    def backward(self, observation, reward, terminal):
-        # record reward
-        self.rewards.append(reward)
-
+    def learn(self, terminal):
         # TODO: Implement tmax case, custom batch size?
         if terminal:
             # Learn policy
-            states = np.array(self.observations)
+            states = np.array(self.exp.states)
             advantages = self.compute_advantage()
-            targets = np.array(self.actions)
+            targets = np.array(self.exp.actions)
 
             self.trainer.fit(
                 [states, advantages],
@@ -79,10 +56,5 @@ class PGAgent(Agent):
                 verbose=0
             )
 
-            # Clear data
-            self.observations = []
-            self.actions = []
-            self.rewards = []
-
     def compute_advantage(self):
-        return discount_rewards(self.rewards, self.discount)
+        return discount_rewards(self.exp.rewards, self.discount)

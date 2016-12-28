@@ -17,11 +17,8 @@ class CriticAgent(Agent):
                  action_space,
                  start_epsilon=1,
                  end_epsilon=0.1,
-                 anneal_steps=1000000,
-                 time_steps=5):
+                 anneal_steps=1000000):
         super().__init__(ob_space, action_space)
-        self.time_steps = time_steps
-
         # Epsilon
         self.epsilon = start_epsilon
         self.start_epsilon = start_epsilon
@@ -65,7 +62,7 @@ class CriticAgent(Agent):
 
         return action
 
-    def forward(self, observation):
+    def choose(self, observation):
         """
         The agent observes a state and chooses an action by the
         epsilon greedy policy.

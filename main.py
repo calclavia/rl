@@ -5,6 +5,7 @@ from pg import *
 from a2c import *
 from critic import *
 from optparse import OptionParser
+from experience import TemporalExperience
 
 parser = OptionParser()
 parser.add_option("-e", "--env",  help="Gym Environment")
@@ -18,13 +19,20 @@ env = gym.make(options.env)
 
 learn = False if options.run else True
 
+time_steps = 5
+num_hidden = 20
+
 # Create an agent based on the environment space.
-agent = globals()[options.agent](env.observation_space, env.action_space)
+agent = globals()[options.agent](
+    env.observation_space,
+    env.action_space,
+    TemporalExperience(env.observation_space,  env.action_space, time_steps)
+)
 
 agent.compile(simple_rnn(
     space_to_shape(env.observation_space),
-    5,
-    20
+    time_steps,
+    num_hidden
 ))
 
 agent.run(env, 10000, render=False, learn=learn)
