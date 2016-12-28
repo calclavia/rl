@@ -33,26 +33,23 @@ class CriticAgent(Agent):
         # Rewards received
         self.rewards = []
 
-    def compile(self, model):
-        num_outputs = action_to_shape(self.action_space)
-
-        inputs = model.input
-        x = model(inputs)
-        value_output = Dense(1, activation='linear')(x)
-
-        self.model = Model(inputs, value_output)
-        self.model.compile(RMSprop(), 'mse')
-
-    def run_episode(self, env, render, learn):
         # Fill in temporal memory
         self.temporal_memory = deque(maxlen=self.time_steps)
         for _ in range(self.time_steps - 1):
             self.temporal_memory.append(
                 np.zeros(space_to_shape(self.ob_space)))
 
-        super().run_episode(env, render, learn)
+    def compile(self, model):
+        num_outputs = action_to_shape(self.action_space)
 
-    def epsilon_greedy(self, predictions):
+        inputs = model.input
+        x = model.output
+        output = Dense(1, activation='linear')(x)
+
+        self.model = Model(inputs, output)
+        self.model.compile(RMSprop(), 'mse')
+
+    def epsilon_greedy(self, probabilities):
         # epsilon greedy exploration-exploitation
         if np.random.random() < self.epsilon:
             # Take a random action
@@ -60,7 +57,7 @@ class CriticAgent(Agent):
         else:
             # Get q values for all actions in current state
             # Take the greedy policy (choose action with largest q value)
-            action = np.argmax(predictions)
+            action = np.argmax(probabilities)
 
         # Epsilon annealing
         if self.epsilon > self.end_epsilon:
@@ -79,9 +76,7 @@ class CriticAgent(Agent):
 
         state = list(self.temporal_memory)
         self.observations.append(state)
-
         predictions = self.model.predict(np.array([state]))[0]
-
         return self.epsilon_greedy(predictions)
 
     def backward(self, observation, reward, terminal):

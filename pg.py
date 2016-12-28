@@ -1,6 +1,6 @@
 import numpy as np
 from keras.models import Model
-from keras.layers import Dense
+from keras.layers import Dense, Input
 from keras.optimizers import RMSprop
 from keras import backend as K
 from collections import deque
@@ -24,30 +24,25 @@ class PGAgent(Agent):
         # Rewards received
         self.rewards = []
 
-    def compile(self, model):
-        super().compile(model)
-        num_outputs = action_to_shape(self.action_space)
-
-        inputs = model.input
-        x = model(inputs)
-        policy_outputs = Dense(
-            num_outputs, activation='softmax', name='output')(x)
-        advantages = Input(shape=(None,), name='advantages')
-
-        # Predicting model
-        self.predictor = Model(inputs, policy_outputs)
-        # Training model
-        self.trainer = Model([inputs, advantages], policy_outputs)
-        self.trainer.compile(RMSprop(), policy_loss(advantages))
-
-    def run_episode(self, env, render, learn):
         # Fill in temporal memory
         self.temporal_memory = deque(maxlen=self.time_steps)
         for _ in range(self.time_steps - 1):
-            self.temporal_memory.append(
-                np.zeros(space_to_shape(self.ob_space)))
+            self.temporal_memory.append(np.zeros(space_to_shape(self.ob_space)))
 
-        super().run_episode(env, render, learn)
+    def compile(self, model):
+        num_outputs = action_to_shape(self.action_space)
+
+        inputs = model.input
+        x = model.output
+        outputs = Dense(num_outputs, activation='softmax', name='output')(x)
+        advantages = Input(shape=(None,), name='advantages')
+
+        # Prediction model
+        self.model = Model(inputs, outputs)
+        # Training model
+        self.trainer = Model([inputs, advantages], outputs)
+        self.trainer.compile(RMSprop(), policy_loss(advantages))
+
 
     def forward(self, observation):
         """
@@ -58,7 +53,7 @@ class PGAgent(Agent):
         self.temporal_memory.append(observation)
 
         state = list(self.temporal_memory)
-        prob_dist = self.predictor.predict(np.array([state]))[0]
+        prob_dist = self.model.predict(np.array([state]))[0]
         action = np.random.choice(prob_dist.size, p=prob_dist)
 
         # record data
