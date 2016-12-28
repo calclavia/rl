@@ -5,7 +5,7 @@ from gym import spaces
 from util import *
 
 class Agent:
-    def __init__(self, ob_space, action_space, exp, discount=0.99):
+    def __init__(self, ob_space, action_space, exp, discount=0.9):
         self.ob_space = ob_space
         self.action_space = action_space
         self.discount = discount

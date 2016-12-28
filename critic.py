@@ -1,7 +1,7 @@
 import numpy as np
 from keras.models import Model
 from keras.layers import Dense
-from keras.optimizers import RMSprop
+from keras.optimizers import Adam
 from collections import deque
 from agent import Agent
 from util import *
@@ -35,7 +35,7 @@ class CriticAgent(Agent):
         output = Dense(1, activation='linear')(x)
 
         self.model = Model(inputs, output)
-        self.model.compile(RMSprop(clipvalue=1.), 'mse')
+        self.model.compile(Adam(), 'mse')
 
     def choose(self):
         """

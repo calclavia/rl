@@ -1,7 +1,7 @@
 import numpy as np
 from keras.models import Model
 from keras.layers import Dense, Input
-from keras.optimizers import RMSprop
+from keras.optimizers import Adam
 from keras import backend as K
 from agent import Agent
 from util import *
@@ -31,7 +31,7 @@ class PGAgent(Agent):
             return policy_loss - 0.01 * entropy
 
         self.trainer = Model([inputs, advantages], outputs)
-        self.trainer.compile(RMSprop(clipvalue=1.), loss)
+        self.trainer.compile(Adam(), loss)
 
     def choose(self):
         """
