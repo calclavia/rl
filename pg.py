@@ -45,7 +45,7 @@ class PGAgent(Agent):
         # TODO: Implement tmax case, custom batch size?
         if terminal:
             # Learn policy
-            states = np.array(self.exp.states)
+            states = np.array(self.exp.get_states())
             advantages = self.compute_advantage()
             targets = np.array(self.exp.actions)
 

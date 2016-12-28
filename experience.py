@@ -82,3 +82,6 @@ class TemporalExperience(Experience):
 
     def get_state(self):
         return list(self.temporal_memory)
+
+    def get_states(self):
+        return self.states

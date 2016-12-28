@@ -4,7 +4,7 @@ from collections import deque
 from gym import spaces
 
 class Agent:
-    def __init__(self, ob_space, action_space, exp=None, discount=0.9):
+    def __init__(self, ob_space, action_space, exp, discount=0.9):
         self.ob_space = ob_space
         self.action_space = action_space
         self.discount = discount
@@ -63,7 +63,7 @@ class Agent:
             if learn:
                 # Observe results of chosen action
                 self.learn(done)
-                
+
             total_reward += reward
             self.step += 1
 

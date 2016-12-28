@@ -12,30 +12,28 @@ class A2CAgent(Agent):
     and the critic agent
     """
 
-    def __init__(self, ob_space, action_space, time_steps=5):
-        super().__init__(ob_space, action_space)
-        self.time_steps = time_steps
+    def __init__(self, ob_space, action_space, exp):
+        super().__init__(ob_space, action_space, exp)
 
-        self.actor = PGAgent(ob_space, action_space, time_steps)
-        self.critic = CriticAgent(ob_space, action_space, time_steps)
+        # Create actor critic agents with synced experiences
+        self.actor = PGAgent(ob_space, action_space, self.exp)
+        self.critic = CriticAgent(ob_space, action_space, self.exp)
 
         # Replace compute_advantage function
         adv = self.actor.compute_advantage
         self.actor.compute_advantage = \
-            lambda: adv() - self.critic.model.predict(self.actor.observations).T[0]
+            lambda: adv() - self.critic.model.predict(self.exp.get_states()).T[0]
 
     def compile(self, model):
         self.critic.compile(model)
         self.actor.compile(model)
 
-    def forward(self, observation):
-        # TODO: We don't need this if we share experiences
-        self.critic.forward(observation)
-        return self.actor.forward(observation)
+    def choose(self):
+        return self.actor.choose()
 
-    def backward(self, observation, reward, terminal):
-        self.critic.backward(observation, reward, terminal)
-        self.actor.backward(observation, reward, terminal)
+    def learn(self, terminal):
+        self.critic.learn(terminal)
+        self.actor.learn(terminal)
 
         # TODO: Printing out all possible states. Remove this
         """
