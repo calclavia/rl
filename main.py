@@ -19,8 +19,8 @@ env = gym.make(options.env)
 # env.monitor.start('/tmp/cartpole-experiment-1')
 learn = False if options.run else True
 
-time_steps = 4
-num_hidden = 15
+time_steps = 10
+num_hidden = 50
 
 # Create an agent based on the environment space.
 agent = globals()[options.agent](

@@ -31,7 +31,7 @@ class PGAgent(Agent):
             return policy_loss - 0.01 * entropy
 
         self.trainer = Model([inputs, advantages], outputs)
-        self.trainer.compile(RMSprop(), loss)
+        self.trainer.compile(RMSprop(lr=1e-4, clipvalue=1.), loss)
 
     def choose(self):
         """
