@@ -40,28 +40,22 @@ def action_to_shape(space):
 def one_hot(index, size):
     return [1 if index == i else 0 for i in range(size)]
 
+
 def policy_loss(advantages):
     def loss(target, output):
         import tensorflow as tf
         # Target is a one-hot vector of actual action taken
-        # Crossentropy weighted by advantage
-        responsible_outputs = K.sum(output * target, 1)
-        policy_loss = -K.sum(K.log(responsible_outputs) * advantages)
         entropy = -K.sum(output * K.log(output), 1)
-        return policy_loss - 0.01 * entropy
+        return policy_loss_no_ent(advantages)(target, output) - 0.01 * entropy
     return loss
+
 
 def policy_loss_no_ent(advantages):
     def loss(target, output):
-        import tensorflow as tf
         # Target is a one-hot vector of actual action taken
         # Crossentropy weighted by advantage
-        policy_loss = -K.sum(
-            tf.diag(advantages) * target * K.log(output),
-            len(output.get_shape()) - 1
-        )
-
-        return policy_loss
+        responsible_outputs = K.sum(output * target, 1)
+        return -K.sum(K.log(responsible_outputs) * advantages)
     return loss
 
 
