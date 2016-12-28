@@ -3,9 +3,14 @@ import numpy as np
 from collections import deque
 
 class Agent:
-    def __init__(self, ob_space, action_space):
+    def __init__(self, ob_space, action_space, discount=0.9):
         self.ob_space = ob_space
         self.action_space = action_space
+        self.discount = discount
+
+    # TODO: Switch to property
+    def compile(self, model):
+        self.model = model
 
     def run(self, env, num_episodes, render=False, learn=True):
         """

@@ -80,9 +80,10 @@ class DiscreteA2CAgent(Agent):
         # record reward
         self.rewards.append(reward)
 
-        # TODO: Implement tmax case?
+        # TODO: Implement tmax case, custom batch size?
         if terminal:
             # Learn critic
+            # TODO: Duplicate
             discounted_rewards = discount_rewards(self.rewards, self.discount)
             current_states = np.array(self.observations)
 

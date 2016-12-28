@@ -1,9 +1,6 @@
 from keras import backend as K
-from keras.layers import Dense, Input, Flatten, Dropout
-from keras.layers.recurrent import LSTM
 import numpy as np
 from gym import spaces
-
 
 def discount_rewards(rewards, discount):
     """ Takes an array of rewards and compute array of discounted reward """
@@ -41,6 +38,11 @@ def one_hot(index, size):
     return [1 if index == i else 0 for i in range(size)]
 
 
+def preprocess(observation, ob_space):
+    if isinstance(ob_space, spaces.Discrete):
+        return one_hot(observation, ob_space.n)
+    return observation
+
 def policy_loss(advantages):
     def loss(target, output):
         import tensorflow as tf
@@ -57,11 +59,3 @@ def policy_loss_no_ent(advantages):
         responsible_outputs = K.sum(output * target, 1)
         return -K.sum(K.log(responsible_outputs) * advantages)
     return loss
-
-
-def build_rnn(input_shape, num_outputs, time_steps, num_h):
-    # Build Network
-    inputs = Input(shape=(time_steps,) + input_shape, name='input')
-    x = LSTM(num_h, activation='relu', name='hidden1')(inputs)
-    x = Dropout(0.25)(x)
-    return inputs, x
