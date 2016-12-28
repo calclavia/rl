@@ -1,55 +1,47 @@
 import numpy as np
 from keras.models import Model
-from keras.layers import Dense, Input, Flatten
-from keras.layers.recurrent import LSTM
+from keras.layers import Dense
 from keras.optimizers import RMSprop
-from keras import backend as K
 from collections import deque
 from agent import Agent
 from util import *
 
-def build_ac_model(input_shape, num_outputs, time_steps, num_h):
-    # Build Network
-    inputs, x = build_rnn(input_shape, num_outputs, time_steps, num_h)
-    policy_outputs = Dense(num_outputs, activation='softmax', name='output')(x)
-    value_output = Dense(1, activation='linear')(x)
-    advantages = Input(shape=(None,), name='advantages')
 
-    predictor = Model(inputs, policy_outputs)
-    # Policy model
-    policy_model = Model([inputs, advantages], policy_outputs)
-    policy_model.compile(RMSprop(), policy_loss(advantages))
+class CriticAgent(Agent):
+    """
+    Agent that learns the advantage function
+    """
 
-    # Value model
-    value_model = Model(inputs, value_output)
-    value_model.compile(RMSprop(), 'mse')
-
-    print(predictor.summary())
-    return predictor, policy_model, value_model
-
-class DiscreteA2CAgent(Agent):
-
-    def __init__(self, ob_space, action_space, discount=0.9, time_steps=5):
+    def __init__(self,
+                 ob_space,
+                 action_space,
+                 start_epsilon=1,
+                 end_epsilon=0.1,
+                 anneal_steps=1000000,
+                 time_steps=5):
         super().__init__(ob_space, action_space)
-        self.discount = discount
         self.time_steps = time_steps
 
-        self.predictor, self.policy, self.value = build_ac_model(
-            space_to_shape(ob_space),
-            action_to_shape(action_space),
-            time_steps,
-            20
-        )
+        # Epsilon
+        self.epsilon = start_epsilon
+        self.start_epsilon = start_epsilon
+        self.end_epsilon = end_epsilon
+        self.annealing = (start_epsilon - end_epsilon) / anneal_steps
 
         # Observations made
         self.observations = []
-        # Actions taken
-        self.actions = []
         # Rewards received
         self.rewards = []
 
-        self.values = deque(maxlen=100)
-        self.advantages = deque(maxlen=100)
+    def compile(self, model):
+        num_outputs = action_to_shape(self.action_space)
+
+        inputs = model.input
+        x = model(inputs)
+        value_output = Dense(1, activation='linear')(x)
+
+        self.model = Model(inputs, value_output)
+        self.model.compile(RMSprop(), 'mse')
 
     def run_episode(self, env, render, learn):
         # Fill in temporal memory
@@ -60,21 +52,37 @@ class DiscreteA2CAgent(Agent):
 
         super().run_episode(env, render, learn)
 
+    def epsilon_greedy(self, predictions):
+        # epsilon greedy exploration-exploitation
+        if np.random.random() < self.epsilon:
+            # Take a random action
+            action = np.random.randint(self.action_space.n)
+        else:
+            # Get q values for all actions in current state
+            # Take the greedy policy (choose action with largest q value)
+            action = np.argmax(predictions)
+
+        # Epsilon annealing
+        if self.epsilon > self.end_epsilon:
+            self.epsilon -= self.annealing
+
+        return action
+
     def forward(self, observation):
         """
-        Choose an action according to the policy
+        The agent observes a state and chooses an action by the
+        epsilon greedy policy.
         """
+        # TODO: Abstract the temporal memory to agent
         observation = preprocess(observation, self.ob_space)
         self.temporal_memory.append(observation)
 
-        x = list(self.temporal_memory)
-        prob_dist = self.predictor.predict(np.array([x]))[0]
-        action = np.random.choice(prob_dist.size, p=prob_dist)
+        state = list(self.temporal_memory)
+        self.observations.append(state)
 
-        # record various intermediates
-        self.observations.append(x)
-        self.actions.append(one_hot(action, self.action_space.n))
-        return action
+        predictions = self.model.predict(np.array([state]))[0]
+
+        return self.epsilon_greedy(predictions)
 
     def backward(self, observation, reward, terminal):
         # record reward
@@ -83,67 +91,16 @@ class DiscreteA2CAgent(Agent):
         # TODO: Implement tmax case, custom batch size?
         if terminal:
             # Learn critic
-            # TODO: Duplicate
             discounted_rewards = discount_rewards(self.rewards, self.discount)
-            current_states = np.array(self.observations)
+            states = np.array(self.observations)
 
-            self.value.fit(
-                current_states,
+            self.model.fit(
+                states,
                 discounted_rewards,
                 nb_epoch=1,
                 verbose=0
             )
 
-            # Learn policy
-            current_values = self.value.predict(current_states).T[0]
-            advantages = discounted_rewards - current_values
-            targets = np.array(self.actions)
-
-            self.policy.fit(
-                [current_states, advantages],
-                targets,
-                nb_epoch=1,
-                verbose=0
-            )
-
-            self.values.append(np.mean(current_values))
-            self.advantages.append(np.mean(np.abs(advantages)))
-
             # Clear data
             self.observations = []
-            self.actions = []
             self.rewards = []
-
-            print('Value: {}, Advantage: {}'.format(np.mean(self.values), np.mean(np.abs(self.advantages))))
-
-            # TODO: Printing out all possible states. Remove this
-            """
-            all_states = [[one_hot(i, 16)] for i in range(16)]
-            print('Value Table')
-            values = self.value.predict(all_states).reshape(4, 4)
-            print(values)
-
-            print('Policy Table')
-            policies = self.predictor.predict(all_states)
-            policies = np.argmax(policies, axis=1)
-            print(policies.reshape(4, 4))
-
-            print('Greedy Policy')
-            dirs = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-            g_policy = np.zeros_like(values)
-            for x in range(4):
-                for y in range(4):
-                    # Find max value
-                    max_dir = -1
-                    max_val = float('-inf')
-                    for i, (dy, dx) in enumerate(dirs):
-                        nX = x + dx
-                        nY = y + dy
-                        if nX >= 0 and nX < 4 and nY >= 0 and nY < 4:
-                            v = values[nX, nY]
-                            if v > max_val:
-                                max_dir = i
-                                max_val = v
-                    g_policy[x, y] = max_dir
-            print(g_policy)
-            """

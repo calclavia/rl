@@ -141,17 +141,3 @@ class DQNAgent:
 
         self.i += 1
         return loss
-
-    def load(self):
-        try:
-            self.model.load_weights('{}.h5'.format(self.save_name))
-            print("Loading weights from {}.h5".format(self.save_name))
-        except:
-            print("Training a new model")
-
-    def save(self):
-        # TODO: Decouple save logic?
-        # Save model after several intervals
-        self.i += 1
-        if self.i % self.save_freq == 0:
-            self.model.save_weights('{}.h5'.format(self.save_name), True)

@@ -1,7 +1,6 @@
 import numpy as np
 from keras.models import Model
-from keras.layers import Dense, Input, Flatten
-from keras.layers.recurrent import LSTM
+from keras.layers import Dense
 from keras.optimizers import RMSprop
 from keras import backend as K
 from collections import deque
@@ -54,15 +53,16 @@ class PGAgent(Agent):
         """
         Choose an action according to the policy
         """
+        # TODO: Abstract the temporal memory to agent
         observation = preprocess(observation, self.ob_space)
         self.temporal_memory.append(observation)
 
-        x = list(self.temporal_memory)
-        prob_dist = self.predictor.predict(np.array([x]))[0]
+        state = list(self.temporal_memory)
+        prob_dist = self.predictor.predict(np.array([state]))[0]
         action = np.random.choice(prob_dist.size, p=prob_dist)
 
         # record data
-        self.observations.append(x)
+        self.observations.append(state)
         self.actions.append(one_hot(action, self.action_space.n))
         return action
 

@@ -3,6 +3,7 @@ from models import *
 from dqn import *
 from pg import *
 from a2c import *
+from critic import *
 from optparse import OptionParser
 
 parser = OptionParser()
