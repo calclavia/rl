@@ -2,6 +2,7 @@ import time
 import numpy as np
 from collections import deque
 from gym import spaces
+from util import *
 
 class Agent:
     def __init__(self, ob_space, action_space, exp, discount=0.9):
