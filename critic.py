@@ -35,7 +35,7 @@ class CriticAgent(Agent):
         output = Dense(1, activation='linear')(x)
 
         self.model = Model(inputs, output)
-        self.model.compile(Adam(), 'mse')
+        self.model.compile(Adam(clipvalue=1), 'mse')
 
     def choose(self):
         """
