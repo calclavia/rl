@@ -11,8 +11,9 @@ from gym import spaces
 from keras import backend as K
 from keras.layers import Dense
 from keras.models import Model
+from .util import *
 
-class ACModel():
+class ACModel:
     def __init__(self, model_builder, num_actions, scope, beta):
         self.scope = scope
         self.num_actions = num_actions
@@ -58,6 +59,9 @@ class ACModel():
 
 class Memory:
     """
+    Represents the memory of the agent.
+    The agent by default stores only the current time step, but is capable
+    of holding memory of previos time steps for training RNNs.
     """
     def __init__(self, init_state, time_steps):
         self._memory = []
