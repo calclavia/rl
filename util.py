@@ -1,12 +1,12 @@
 from keras import backend as K
+import time
 import numpy as np
 import tensorflow as tf
 from gym import spaces
 
-def discount(rewards, discount):
+def discount(rewards, discount, current=0):
     """ Takes an array of rewards and compute array of discounted reward """
     discounted_r = np.zeros_like(rewards)
-    current = 0
 
     for t in reversed(range(len(rewards))):
         current = current * discount + rewards[t]
@@ -14,41 +14,20 @@ def discount(rewards, discount):
 
     return discounted_r
 
-def z_score(x):
-    # z-score the rewards to be unit normal (variance control)
-    std = np.std(x)
+def make_summary(data, prefix=''):
+    if prefix != '':
+        prefix += '/'
 
-    if std != 0:
-        return (x - np.mean(x)) / std
-    return x - np.mean(x)
+    summary = tf.Summary()
+    for name, value in data.items():
+        summary.value.add(tag=prefix + name, simple_value=float(value))
 
-def space_to_shape(space):
-    if isinstance(space, spaces.Discrete):
-        # One hot vectors of states
-        return (space.n,)
+    return summary
 
-    if isinstance(space, spaces.Tuple):
-        return (len(space.spaces),)
-
-    return space.shape
-
-def action_to_shape(space):
-    return space.n if isinstance(space, spaces.Discrete) else space.shape
-
-def one_hot(index, size):
-    return [1 if index == i else 0 for i in range(size)]
-
-def summary_writer(prefix, writer):
-    def write(agent):
-        summary = tf.Summary()
-
-        for name, values in agent.metrics.items():
-            summary.value.add(tag=prefix + '/' + name, simple_value=float(values[-1]))
-
-        writer.add_summary(summary, agent.episode_count)
-        writer.flush()
-
-    return write
+def save_worker(sess, coord, agent):
+    while not coord.should_stop():
+        time.sleep(60)
+        agent.save(sess)
 
 def update_target_graph(from_scope, to_scope):
     """
@@ -59,6 +38,27 @@ def update_target_graph(from_scope, to_scope):
     to_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, to_scope)
 
     op_holder = []
-    for from_var,to_var in zip(from_vars,to_vars):
+    for from_var, to_var in zip(from_vars, to_vars):
         op_holder.append(to_var.assign(from_var))
     return op_holder
+
+def track(env):
+    """
+    Wraps a Gym environment to keep track of the results of step calls visited.
+    """
+    step = env.step
+    def step_override(*args, **kwargs):
+        result = step(*args, **kwargs)
+        env.step_cache.append(result)
+        env.total_reward += result[1]
+        return result
+    env.step = step_override
+
+    reset = env.reset
+    def reset_override(*args, **kwargs):
+        env.total_reward = 0
+        env.step_cache = []
+        return reset(*args, **kwargs)
+    env.reset = reset_override
+
+    return env
