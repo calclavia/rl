@@ -132,6 +132,8 @@ class A3CAgent:
         self.saver.restore(sess, ckpt.model_checkpoint_path)
 
     def save(self, sess):
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
         self.saver.save(sess, self.model_path + '/model-' + str(self.save_count) + '.cptk')
         self.save_count += 1
 
