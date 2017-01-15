@@ -56,16 +56,23 @@ class ACModel:
             # Apply local gradients to global network
             global_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
             self.train = optimizer.apply_gradients(zip(grads, global_vars))
-
 class Memory:
     """
     Represents the memory of the agent.
     The agent by default stores only the current time step, but is capable
     of holding memory of previos time steps for training RNNs.
     """
+
     def __init__(self, init_state, time_steps):
         self._memory = []
         self.time_steps = time_steps
+
+        # Handle non-tuple states
+        if not isinstance(init_state, tuple):
+            self.is_tuple = False
+            init_state = (init_state,)
+        else:
+            self.is_tuple = True
 
         for input_state in init_state:
             # lookback buffer
@@ -78,6 +85,9 @@ class Memory:
             self._memory.append(temporal_memory)
 
     def remember(self, state):
+        if not self.is_tuple:
+            state = (state,)
+
         for i, input_state in enumerate(state):
             self._memory[i].append(input_state)
 
@@ -92,9 +102,9 @@ class Memory:
     def build_single_feed(self, inputs):
         if self.time_steps == 0:
             # No time_steps = not recurrent
-            return { i: list(m) for i, m in zip(inputs, self._memory) }
+            return {i: list(m) for i, m in zip(inputs, self._memory)}
         else:
-            return { i: [list(m)] for i, m in zip(inputs, self._memory) }
+            return {i: [list(m)] for i, m in zip(inputs, self._memory)}
 
 class A3CAgent:
     def __init__(self,
