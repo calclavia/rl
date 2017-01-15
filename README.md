@@ -1,5 +1,8 @@
-# Async Advantage Actor Critic
-Simple A3C reinforcement learning agent implemented using Tensorflow, Keras and OpenAI Gym.
+# Reinforcement Learning Agents
+This repository aims to contain the latest reinforcement learning algorithms
+implemented using Tensorflow, Keras and OpenAI Gym.
+
+Currently, A3C has been implemented.
 
 Based on:
 - https://github.com/sherjilozair/dqn
@@ -12,4 +15,11 @@ Based on:
 
 ```
 pip install -r requirements.txt
+```
+
+## Usage
+```
+with tf.device("/cpu:0"):
+  agent = A3CAgent(num_actions, lambda: model)
+  agent.train(env_name)
 ```
