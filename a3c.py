@@ -22,28 +22,40 @@ class ACModel:
         with tf.variable_scope(self.scope):
             self.model = model_builder()
             # Output layers for policy and value estimations
-            self.policy = self.model.outputs[0]
-            self.value = self.model.outputs[1]
+            self.policies = self.model.outputs[:-1]
+            self.value = self.model.outputs[-1]
 
     def compile(self, optimizer, grad_clip):
         # Only the worker network need ops for loss functions and gradient updating.
         with tf.variable_scope(self.scope):
-            # Action chosen for every single policy output
-            self.actions = [tf.placeholder(shape=[None], dtype=tf.int32)]
-            num_actions = self.policy.get_shape()[1]
-            actions_hot = tf.one_hot(self.actions[0], num_actions)
-
             self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
             self.advantages = tf.placeholder(shape=[None], dtype=tf.float32)
 
-            responsible_outputs = tf.reduce_sum(self.policy * actions_hot, [1])
+            # Action chosen for every single policy output
+            self.actions = []
+            policy_losses = []
+            entropies = []
+
+            # Every policy output
+            for policy in self.policies:
+                num_actions = policy.get_shape()[1]
+                action = tf.placeholder(shape=[None], dtype=tf.int32)
+                actions_hot = tf.one_hot(action, num_actions)
+                self.actions.append(action)
+
+                responsible_outputs = tf.reduce_sum(policy * actions_hot, [1])
+                # Entropy regularization
+                # TODO: Clipping should be configurable
+                entropies.append(-tf.reduce_sum(policy * tf.log(tf.clip_by_value(policy, 1e-20, 1.0))))
+                # Policy loss
+                policy_losses.append(-tf.reduce_sum(tf.log(responsible_outputs) * self.advantages))
+
+            # Compute average policy and entropy loss
+            self.policy_loss = tf.reduce_mean(policy_losses, 0)
+            self.entropy = tf.reduce_mean(entropies, 0)
 
              # Value loss (Mean squared error)
             self.value_loss = tf.reduce_mean(tf.square(self.target_v - tf.reshape(self.value, [-1])))
-            # Entropy regularization
-            self.entropy = -tf.reduce_sum(self.policy * tf.log(tf.clip_by_value(self.policy, 1e-20, 1.0)))
-            # Policy loss
-            self.policy_loss = -tf.reduce_sum(tf.log(responsible_outputs) * self.advantages)
             # Learning rate for Critic is half of Actor's, so multiply by 0.5
             self.loss = 0.5 * self.value_loss + self.policy_loss - self.beta * self.entropy
 
