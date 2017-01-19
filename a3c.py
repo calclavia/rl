@@ -51,8 +51,8 @@ class ACModel:
                 policy_losses.append(-tf.reduce_sum(tf.log(responsible_outputs) * self.advantages))
 
             # Compute average policy and entropy loss
-            self.policy_loss = tf.reduce_mean(policy_losses, 0)
-            self.entropy = tf.reduce_mean(entropies, 0)
+            self.policy_loss = tf.reduce_sum(policy_losses)
+            self.entropy = tf.reduce_sum(entropies)
 
              # Value loss (Mean squared error)
             self.value_loss = tf.reduce_mean(tf.square(self.target_v - tf.reshape(self.value, [-1])))
@@ -230,7 +230,7 @@ class A3CAgent:
                 action.append(round(np.random.random()))
             else:
                 action.append(np.random.choice(len(p), p=p))
-                
+
         flatten_action = action[0] if len(action) == 1 else action
         next_state, reward, terminal, info = env.step(flatten_action)
         next_state = self.preprocess(env, next_state)
