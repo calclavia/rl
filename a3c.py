@@ -221,8 +221,16 @@ class A3CAgent:
         value = value[0][0]
 
         # Sample an action from an action probability distribution output
-        action = [np.random.choice(len(p[0]), p=p[0]) for p in probs]
+        action = []
 
+        for p in probs:
+            p = p[0]
+            if len(p) == 1:
+                # Must be a binary probability
+                action.append(round(np.random.random()))
+            else:
+                action.append(np.random.choice(len(p), p=p))
+                
         flatten_action = action[0] if len(action) == 1 else action
         next_state, reward, terminal, info = env.step(flatten_action)
         next_state = self.preprocess(env, next_state)
