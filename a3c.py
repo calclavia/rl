@@ -23,13 +23,16 @@ class ACModel:
             self.model = model_builder()
             # Output layers for policy and value estimations
             self.policy = self.model.outputs[0]
-            self.value = self.model.outputs[0]
+            self.value = self.model.outputs[1]
 
     def compile(self, optimizer, grad_clip):
         # Only the worker network need ops for loss functions and gradient updating.
         with tf.variable_scope(self.scope):
-            self.actions = tf.placeholder(shape=[None], dtype=tf.int32)
-            actions_hot = tf.one_hot(self.actions, self.num_actions)
+            # Action chosen for every single policy output
+            self.actions = [tf.placeholder(shape=[None], dtype=tf.int32)]
+            num_actions = self.policy.get_shape()[1]
+            actions_hot = tf.one_hot(self.actions[0], num_actions)
+
             self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
             self.advantages = tf.placeholder(shape=[None], dtype=tf.float32)
 
@@ -218,25 +221,26 @@ class A3CAgent:
                 t_start = t
 
                 # Batched based variables
-                state_batches = [[] for _ in model.inputs]
+                state_batches = [[] for _ in model.model.inputs]
                 actions = []
                 rewards = []
                 values = []
 
                 while not (terminal or ((t - t_start) == self.batch_size)):
                     # Perform action according to policy pi(a_t | s_t)
-                    probs, value = sess.run(
-                        [model.policy, model.value],
-                         memory.build_single_feed(model.inputs)
+                    *probs, value = sess.run(
+                        model.model.outputs,
+                        memory.build_single_feed(model.model.inputs)
                     )
 
                     # Remove batch dimension
-                    probs = probs[0]
-                    value = value[0]
-                    # Sample an action from an action probability distribution output
-                    action = np.random.choice(len(probs), p=probs)
+                    value = value[0][0]
 
-                    next_state, reward, terminal, info = env.step(action)
+                    # Sample an action from an action probability distribution output
+                    action = [np.random.choice(len(p[0]), p=p[0]) for p in probs]
+
+                    flatten_action = action[0] if len(action) == 1 else action
+                    next_state, reward, terminal, info = env.step(flatten_action)
                     next_state = self.preprocess(env, next_state)
 
                     # Bookkeeping
@@ -258,7 +262,7 @@ class A3CAgent:
                     # Bootstrap from last state
                     reward = sess.run(
                         model.value,
-                        memory.build_single_feed(model.inputs)
+                        memory.build_single_feed(model.model.inputs)
                     )[0][0]
 
                 # Here we take the rewards and values from the exp, and use them to
@@ -278,11 +282,11 @@ class A3CAgent:
                         model.train
                     ],
                      {
-                        **dict(zip(model.inputs, state_batches)),
+                        **dict(zip(model.model.inputs, state_batches)),
+                        **dict(zip(model.actions, zip(*actions))),
                         **
                         {
                             model.target_v: discounted_rewards,
-                            model.actions: actions,
                             model.advantages: advantages
                         }
                     }
@@ -322,7 +326,7 @@ class A3CAgent:
             # Perform action according to policy pi(a_t | s_t)
             probs, value = sess.run(
                 [self.model.policy, self.model.value],
-                memory.build_single_feed(self.model.inputs)
+                memory.build_single_feed(self.model.model.inputs)
             )
 
             # Remove batch dimension
