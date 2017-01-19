@@ -208,6 +208,26 @@ class A3CAgent:
 
             coord.join(worker_threads)
 
+    def perform(self, sess, env, model, memory):
+        """
+        Perform action according to policy pi(a | s)
+        """
+        *probs, value = sess.run(
+            model.model.outputs,
+            memory.build_single_feed(model.model.inputs)
+        )
+
+        # Remove batch dimension
+        value = value[0][0]
+
+        # Sample an action from an action probability distribution output
+        action = [np.random.choice(len(p[0]), p=p[0]) for p in probs]
+
+        flatten_action = action[0] if len(action) == 1 else action
+        next_state, reward, terminal, info = env.step(flatten_action)
+        next_state = self.preprocess(env, next_state)
+        return value, action, next_state, reward, terminal
+
     def train_thread(self, sess, coord, writer, env_name, num, model, sync, gamma):
         # Thread setup
         env = gym.make(env_name)
@@ -239,21 +259,9 @@ class A3CAgent:
                 values = []
 
                 while not (terminal or ((t - t_start) == self.batch_size)):
-                    # Perform action according to policy pi(a_t | s_t)
-                    *probs, value = sess.run(
-                        model.model.outputs,
-                        memory.build_single_feed(model.model.inputs)
+                    value, action, next_state, reward, terminal = self.perform(
+                        sess, env, model, memory
                     )
-
-                    # Remove batch dimension
-                    value = value[0][0]
-
-                    # Sample an action from an action probability distribution output
-                    action = [np.random.choice(len(p[0]), p=p[0]) for p in probs]
-
-                    flatten_action = action[0] if len(action) == 1 else action
-                    next_state, reward, terminal, info = env.step(flatten_action)
-                    next_state = self.preprocess(env, next_state)
 
                     # Bookkeeping
                     for i, state in enumerate(memory.to_states()):
@@ -335,17 +343,9 @@ class A3CAgent:
         terminal = False
 
         while not terminal:
-            # Perform action according to policy pi(a_t | s_t)
-            probs, value = sess.run(
-                [self.model.policy, self.model.value],
-                memory.build_single_feed(self.model.model.inputs)
+            value, action, next_state, reward, terminal = self.perform(
+                sess, env, model, memory
             )
 
-            # Remove batch dimension
-            probs = probs[0]
-            value = value[0]
-            # Sample an action from an action probability distribution output
-            action = np.random.choice(len(probs), p=probs)
-            state, reward, terminal, info = env.step(action)
             total_reward += reward
-            memory.remember(self.preprocess(env, state))
+            memory.remember(next_state)
