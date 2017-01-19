@@ -14,18 +14,16 @@ from keras.models import Model
 from .util import *
 
 class ACModel:
-    def __init__(self, model_builder, num_actions, scope, beta):
+    def __init__(self, model_builder, scope, beta):
         self.scope = scope
-        self.num_actions = num_actions
         # Entropy weight
         self.beta = beta
 
         with tf.variable_scope(self.scope):
-            self.inputs, x = model_builder()
+            self.model = model_builder()
             # Output layers for policy and value estimations
-            self.policy = Dense(num_actions, activation='softmax', name='policy_output')(x)
-            self.value = Dense(1, activation='linear', name='value_output')(x)
-            self.model = Model(self.inputs, [self.policy, self.value])
+            self.policy = self.model.outputs[0]
+            self.value = self.model.outputs[0]
 
     def compile(self, optimizer, grad_clip):
         # Only the worker network need ops for loss functions and gradient updating.
@@ -108,14 +106,12 @@ class Memory:
 
 class A3CAgent:
     def __init__(self,
-                 num_actions,
                  model_builder,
                  time_steps=0,
                  preprocess=lambda e, x: x,
                  model_path='out/model',
                  entropy_factor=1e-2,
                  batch_size=32):
-        self.num_actions = num_actions
         self.model_builder = model_builder
         self.time_steps = time_steps
         self.model_path = model_path
@@ -124,7 +120,7 @@ class A3CAgent:
         self.batch_size = batch_size
         self.save_count = 0
         # Generate global network
-        self.model = ACModel(model_builder, num_actions, 'global', entropy_factor)
+        self.model = ACModel(model_builder, 'global', entropy_factor)
         self.saver = tf.train.Saver(max_to_keep=5)
 
     def load(self, sess):
@@ -155,7 +151,6 @@ class A3CAgent:
                 name = 'worker_' + str(i)
                 model = ACModel(
                     self.model_builder,
-                    self.num_actions,
                     name,
                     self.entropy_factor
                 )
