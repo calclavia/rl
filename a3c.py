@@ -344,7 +344,7 @@ class A3CAgent:
 
         while not terminal:
             value, action, next_state, reward, terminal = self.perform(
-                sess, env, model, memory
+                sess, env, self.model, memory
             )
 
             total_reward += reward
