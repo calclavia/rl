@@ -175,110 +175,114 @@ class A3CAgent:
         return value, action, next_state, reward, terminal
 
     def train_thread(self, sess, coord, writer, env_name, num, model, gamma):
-        # Thread setup
-        env = gym.make(env_name)
+        try:
+            # Thread setup
+            env = gym.make(env_name)
 
-        episode_count = 0
+            episode_count = 0
 
-        # Reset per-episode vars
-        terminal = False
-        total_reward = 0
-        step_count = 0
-        # Each memory corresponds to one input.
-        memory = Memory(self.preprocess(env, env.reset()), self.time_steps)
+            # Reset per-episode vars
+            terminal = False
+            total_reward = 0
+            step_count = 0
+            # Each memory corresponds to one input.
+            memory = Memory(self.preprocess(env, env.reset()), self.time_steps)
 
-        print("Running worker " + str(num))
+            print("Running worker " + str(num))
 
-        with sess.as_default(), sess.graph.as_default():
-            while not coord.should_stop():
-                # Run a training batch
-                t = 0
-                t_start = t
+            with sess.as_default(), sess.graph.as_default():
+                while not coord.should_stop():
+                    # Run a training batch
+                    t = 0
+                    t_start = t
 
-                # Batched based variables
-                state_batches = [[] for _ in model.model.inputs]
-                actions = []
-                rewards = []
-                values = []
+                    # Batched based variables
+                    state_batches = [[] for _ in model.model.inputs]
+                    actions = []
+                    rewards = []
+                    values = []
 
-                while not (terminal or ((t - t_start) == self.batch_size)):
-                    value, action, next_state, reward, terminal = self.perform(
-                        sess, env, model, memory
-                    )
+                    while not (terminal or ((t - t_start) == self.batch_size)):
+                        value, action, next_state, reward, terminal = self.perform(
+                            sess, env, model, memory
+                        )
 
-                    # Bookkeeping
-                    for i, state in enumerate(memory.to_states()):
-                        state_batches[i].append(state)
+                        # Bookkeeping
+                        for i, state in enumerate(memory.to_states()):
+                            state_batches[i].append(state)
 
-                    memory.remember(next_state)
-                    actions.append(action)
-                    values.append(value)
-                    rewards.append(reward)
+                        memory.remember(next_state)
+                        actions.append(action)
+                        values.append(value)
+                        rewards.append(reward)
 
-                    total_reward += reward
-                    step_count += 1
-                    t += 1
+                        total_reward += reward
+                        step_count += 1
+                        t += 1
 
-                if terminal:
-                    reward = 0
-                else:
-                    # Bootstrap from last state
-                    reward = sess.run(
-                        model.value,
-                        memory.build_single_feed(model.model.inputs)
-                    )[0][0]
+                    if terminal:
+                        reward = 0
+                    else:
+                        # Bootstrap from last state
+                        reward = sess.run(
+                            model.value,
+                            memory.build_single_feed(model.model.inputs)
+                        )[0][0]
 
-                # Here we take the rewards and values from the exp, and use them to
-                # generate the advantage and discounted returns.
-                # The advantage function uses "Generalized Advantage Estimation"
-                discounted_rewards = discount(rewards, gamma, reward)
-                value_plus = np.array(values + [reward])
-                advantages = discount(rewards + gamma * value_plus[1:] - value_plus[:-1], gamma)
+                    # Here we take the rewards and values from the exp, and use them to
+                    # generate the advantage and discounted returns.
+                    # The advantage function uses "Generalized Advantage Estimation"
+                    discounted_rewards = discount(rewards, gamma, reward)
+                    value_plus = np.array(values + [reward])
+                    advantages = discount(rewards + gamma * value_plus[1:] - value_plus[:-1], gamma)
 
-                # Train network
-                v_l, p_l, e_l, g_n, v_n, _ = sess.run([
-                        model.value_loss,
-                        model.policy_loss,
-                        model.entropy,
-                        model.grad_norms,
-                        model.var_norms,
-                        model.train
-                    ],
-                     {
-                        **dict(zip(model.model.inputs, state_batches)),
-                        **dict(zip(model.actions, zip(*actions))),
-                        **
-                        {
-                            model.target_v: discounted_rewards,
-                            model.advantages: advantages
+                    # Train network
+                    v_l, p_l, e_l, g_n, v_n, _ = sess.run([
+                            model.value_loss,
+                            model.policy_loss,
+                            model.entropy,
+                            model.grad_norms,
+                            model.var_norms,
+                            model.train
+                        ],
+                         {
+                            **dict(zip(model.model.inputs, state_batches)),
+                            **dict(zip(model.actions, zip(*actions))),
+                            **
+                            {
+                                model.target_v: discounted_rewards,
+                                model.advantages: advantages
+                            }
                         }
-                    }
-                )
-
-                if terminal:
-                    # Record metrics
-                    writer.add_summary(
-                        make_summary({
-                            'rewards': total_reward,
-                            'lengths': step_count,
-                            'value_loss': v_l,
-                            'policy_loss': p_l,
-                            'entropy_loss': e_l,
-                            'grad_norm': g_n,
-                            'value_norm': v_n,
-                            'mean_values': np.mean(values)
-                        }),
-                        episode_count
                     )
 
-                    episode_count += 1
+                    if terminal:
+                        # Record metrics
+                        writer.add_summary(
+                            make_summary({
+                                'rewards': total_reward,
+                                'lengths': step_count,
+                                'value_loss': v_l,
+                                'policy_loss': p_l,
+                                'entropy_loss': e_l,
+                                'grad_norm': g_n,
+                                'value_norm': v_n,
+                                'mean_values': np.mean(values)
+                            }),
+                            episode_count
+                        )
 
-                    # Reset per-episode counters
-                    terminal = False
-                    total_reward = 0
-                    step_count = 0
-                    # Each memory corresponds to one input.
-                    memory = Memory(self.preprocess(env, env.reset()), self.time_steps)
+                        episode_count += 1
+
+                        # Reset per-episode counters
+                        terminal = False
+                        total_reward = 0
+                        step_count = 0
+                        # Each memory corresponds to one input.
+                        memory = Memory(self.preprocess(env, env.reset()), self.time_steps)
+        except Exception as e:
+            # Report exceptions to the coordinator.
+            coord.request_stop(e)
 
     def run(self, sess, env):
         memory = Memory(self.preprocess(env, env.reset()), self.time_steps)
