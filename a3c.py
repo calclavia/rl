@@ -5,13 +5,13 @@ import gym
 import threading
 import multiprocessing
 import time
-from collections import deque
 from gym import spaces
 
 from keras import backend as K
 from keras.layers import Dense
 from keras.models import Model
 from .util import *
+from .memory import Memory
 
 class ACModel:
     def __init__(self, model_builder, scope, beta):
@@ -69,55 +69,6 @@ class ACModel:
             # Apply local gradients to global network
             global_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'global')
             self.train = optimizer.apply_gradients(zip(grads, global_vars))
-class Memory:
-    """
-    Represents the memory of the agent.
-    The agent by default stores only the current time step, but is capable
-    of holding memory of previos time steps for training RNNs.
-    """
-
-    def __init__(self, init_state, time_steps):
-        self._memory = []
-        self.time_steps = time_steps
-
-        # Handle non-tuple states
-        if not isinstance(init_state, tuple):
-            self.is_tuple = False
-            init_state = (init_state,)
-        else:
-            self.is_tuple = True
-
-        for input_state in init_state:
-            # lookback buffer
-            temporal_memory = deque(maxlen=max(time_steps, 1))
-            # Fill temporal memory with zeros
-            while len(temporal_memory) < time_steps - 1:
-                temporal_memory.appendleft(np.zeros_like(input_state))
-
-            temporal_memory.append(input_state)
-            self._memory.append(temporal_memory)
-
-    def remember(self, state):
-        if not self.is_tuple:
-            state = (state,)
-
-        for i, input_state in enumerate(state):
-            self._memory[i].append(input_state)
-
-    def to_states(self):
-        """ Returns a state per input """
-        if self.time_steps == 0:
-            # No time_steps = not recurrent
-            return [m[0] for m in self._memory]
-        else:
-            return [list(m) for m in self._memory]
-
-    def build_single_feed(self, inputs):
-        if self.time_steps == 0:
-            # No time_steps = not recurrent
-            return {i: list(m) for i, m in zip(inputs, self._memory)}
-        else:
-            return {i: [list(m)] for i, m in zip(inputs, self._memory)}
 
 class A3CAgent:
     def __init__(self,
@@ -156,25 +107,15 @@ class A3CAgent:
               num_workers=multiprocessing.cpu_count(),
               optimizer=tf.train.AdamOptimizer(learning_rate=1e-4)):
         print('Training model')
+
+        self.model.compile(optimizer, grad_clip)
         print(self.model.model.summary())
 
         with tf.Session() as sess:
-            workers = []
-
-            # Create worker classes
-            for i in range(num_workers):
-                name = 'worker_' + str(i)
-                model = ACModel(
-                    self.model_builder,
-                    name,
-                    self.entropy_factor
-                )
-                model.compile(optimizer, grad_clip)
-                sync = update_target_graph('global', name)
-                workers.append((name, model, sync))
-
             # Initialize variables
             sess.run(tf.global_variables_initializer())
+
+            # TODO: Not SRP. Move this.
             try:
                 self.load(sess)
                 print('Loading last saved session')
@@ -184,7 +125,8 @@ class A3CAgent:
             coord = tf.train.Coordinator()
             worker_threads = []
 
-            for i, (name, model, sync) in enumerate(workers):
+            for i in range(num_workers):
+                name = 'worker_' + str(i)
                 writer = tf.summary.FileWriter(summary_path + name, sess.graph, flush_secs=2)
                 t = threading.Thread(target=self.train_thread, args=(
                     sess,
@@ -192,8 +134,7 @@ class A3CAgent:
                     writer,
                     env_name,
                     i,
-                    model,
-                    sync,
+                    self.model,
                     discount
                 ))
                 t.start()
@@ -236,7 +177,7 @@ class A3CAgent:
         next_state = self.preprocess(env, next_state)
         return value, action, next_state, reward, terminal
 
-    def train_thread(self, sess, coord, writer, env_name, num, model, sync, gamma):
+    def train_thread(self, sess, coord, writer, env_name, num, model, gamma):
         # Thread setup
         env = gym.make(env_name)
 
@@ -253,9 +194,6 @@ class A3CAgent:
 
         with sess.as_default(), sess.graph.as_default():
             while not coord.should_stop():
-                # Sync local network with global network
-                sess.run(sync)
-
                 # Run a training batch
                 t = 0
                 t_start = t
