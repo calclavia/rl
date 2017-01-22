@@ -8,9 +8,11 @@ class Memory:
     of holding memory of previos time steps for training RNNs.
     """
 
-    def __init__(self, init_state, time_steps):
-        self._memory = []
+    def __init__(self, time_steps):
         self.time_steps = time_steps
+
+    def reset(self, init_state):
+        self._memory = []
 
         # Handle non-tuple states
         if not isinstance(init_state, tuple):
@@ -21,9 +23,9 @@ class Memory:
 
         for input_state in init_state:
             # lookback buffer
-            temporal_memory = deque(maxlen=max(time_steps, 1))
+            temporal_memory = deque(maxlen=max(self.time_steps, 1))
             # Fill temporal memory with zeros
-            while len(temporal_memory) < time_steps - 1:
+            while len(temporal_memory) < self.time_steps - 1:
                 temporal_memory.appendleft(np.zeros_like(input_state))
 
             temporal_memory.append(input_state)
