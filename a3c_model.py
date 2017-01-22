@@ -1,10 +1,12 @@
 import tensorflow as tf
 
+
 class ACModel:
     """
     Holds the AC model and Keras model that has been passed in.
     Compiles the policy and value loss functions.
     """
+
     def __init__(self, model_builder, beta):
         # Entropy weight
         self.beta = beta
@@ -17,8 +19,10 @@ class ACModel:
     def compile(self, optimizer, grad_clip):
         # Only the worker network need ops for loss functions and gradient
         # updating.
-        self.target_v = tf.placeholder(shape=[None], dtype=tf.float32)
-        self.advantages = tf.placeholder(shape=[None], dtype=tf.float32)
+        self.target_v = tf.placeholder(
+            tf.float32, [None],  name='target_values')
+        self.advantages = tf.placeholder(
+            tf.float32, [None],  name='advantages')
 
         # Action chosen for every single policy output
         self.actions = []
@@ -28,7 +32,7 @@ class ACModel:
         # Every policy output
         for policy in self.policies:
             num_actions = policy.get_shape()[1]
-            action = tf.placeholder(shape=[None], dtype=tf.int32)
+            action = tf.placeholder(tf.int32, [None])
             actions_hot = tf.one_hot(action, num_actions)
             self.actions.append(action)
 

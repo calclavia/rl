@@ -11,6 +11,7 @@ from .a3c_model import ACModel
 from .util import *
 from .memory import Memory
 
+
 class AgentRunner:
     """
     Represents a thread the agent runs on
@@ -21,6 +22,7 @@ class AgentRunner:
 
     def run(self):
         pass
+
 
 class ACAgentRunner(AgentRunner):
 
@@ -171,17 +173,19 @@ class ACAgentRunner(AgentRunner):
             coord.request_stop(e)
 
     def run(self, sess, env):
-        memory = Memory(self.preprocess(env, env.reset()), self.time_steps)
+        self.memory.reset(self.preprocess(env, env.reset()))
         total_reward = 0
         terminal = False
 
         while not terminal:
-            value, action, next_state, reward, terminal = self.perform(
-                sess, env, self.model, memory
-            )
+            value,\
+            action,\
+            next_state,\
+            reward,\
+            terminal = self.perform(sess, env)
 
             total_reward += reward
-            memory.remember(next_state)
+            self.memory.remember(next_state)
 
 # TODO: Refactor to async coordinator?
 class A3CAgent(AgentRunner):
@@ -282,3 +286,7 @@ class A3CAgent(AgentRunner):
         coord.register_thread(t)
 
         return coord
+
+    def run(self, sess, env):
+        # Pick the first agent to run the environment
+        self.agents[0].run(sess, env)
