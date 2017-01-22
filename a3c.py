@@ -73,7 +73,7 @@ class ACAgentRunner(AgentRunner):
             # Each memory corresponds to one input.
             self.memory.reset(self.preprocess(env, env.reset()))
 
-            print("Running worker...")
+            print("Training ACAgentRunner...")
 
             with sess.as_default(), sess.graph.as_default():
                 while not coord.should_stop():
@@ -212,12 +212,15 @@ class A3CAgent(AgentRunner):
         self.agents = []
 
         for i in range(num_workers):
-            self.agents.append(ACAgentRunner(
-                self.model,
-                Memory(time_steps),
-                self.preprocess,
-                batch_size
-            ))
+            self.add_agent()
+
+    def add_agent(self, Agent=ACAgentRunner):
+        self.agents.append(Agent(
+            self.model,
+            Memory(self.time_steps),
+            self.preprocess,
+            self.batch_size
+        ))
 
     # TODO: Not SRP. Agent shouldn't handle model saving.
     def load(self, sess):
