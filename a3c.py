@@ -22,7 +22,6 @@ class AgentRunner:
     def run(self):
         pass
 
-
 class ACAgentRunner(AgentRunner):
 
     def __init__(self, model, memory, preprocess, batch_size):
@@ -75,100 +74,98 @@ class ACAgentRunner(AgentRunner):
 
             print("Training ACAgentRunner...")
 
-            with sess.as_default(), sess.graph.as_default():
-                while not coord.should_stop():
-                    # Run a training batch
-                    t = 0
-                    t_start = t
+            while not coord.should_stop():
+                # Run a training batch
+                t = 0
+                t_start = t
 
-                    # Batched based variables
-                    state_batches = [[] for _ in self.model.model.inputs]
-                    actions = []
-                    rewards = []
-                    values = []
+                # Batched based variables
+                state_batches = [[] for _ in self.model.model.inputs]
+                actions = []
+                rewards = []
+                values = []
 
-                    while not (terminal or ((t - t_start) == self.batch_size)):
-                        value, action, next_state, reward, terminal = self.perform(
-                            sess, env
-                        )
-
-                        # Bookkeeping
-                        for i, state in enumerate(self.memory.to_states()):
-                            state_batches[i].append(state)
-
-                        self.memory.remember(next_state)
-                        actions.append(action)
-                        values.append(value)
-                        rewards.append(reward)
-
-                        total_reward += reward
-                        step_count += 1
-                        t += 1
-
-                    if terminal:
-                        reward = 0
-                    else:
-                        # Bootstrap from last state
-                        reward = sess.run(
-                            self.model.value,
-                            self.memory.build_single_feed(
-                                self.model.model.inputs)
-                        )[0][0]
-
-                    # Here we take the rewards and values from the exp, and use them to
-                    # generate the advantage and discounted returns.
-                    # The advantage function uses "Generalized Advantage
-                    # Estimation"
-                    discounted_rewards = discount(rewards, gamma, reward)
-                    value_plus = np.array(values + [reward])
-                    advantages = discount(
-                        rewards + gamma * value_plus[1:] - value_plus[:-1], gamma)
-
-                    # Train network
-                    v_l, p_l, e_l, g_n, v_n, _ = sess.run([
-                        self.model.value_loss,
-                        self.model.policy_loss,
-                        self.model.entropy,
-                        self.model.grad_norms,
-                        self.model.var_norms,
-                        self.model.train
-                    ],
-                        {
-                        **dict(zip(self.model.model.inputs, state_batches)),
-                            **dict(zip(self.model.actions, zip(*actions))),
-                            **
-                        {
-                                self.model.target_v: discounted_rewards,
-                                self.model.advantages: advantages
-                        }
-                    }
+                while not (terminal or ((t - t_start) == self.batch_size)):
+                    value, action, next_state, reward, terminal = self.perform(
+                        sess, env
                     )
 
-                    if terminal:
-                        # Record metrics
-                        writer.add_summary(
-                            make_summary({
-                                'rewards': total_reward,
-                                'lengths': step_count,
-                                'value_loss': v_l,
-                                'policy_loss': p_l,
-                                'entropy_loss': e_l,
-                                'grad_norm': g_n,
-                                'value_norm': v_n,
-                                'mean_values': np.mean(values)
-                            }),
-                            episode_count
-                        )
+                    # Bookkeeping
+                    for i, state in enumerate(self.memory.to_states()):
+                        state_batches[i].append(state)
 
-                        episode_count += 1
+                    self.memory.remember(next_state)
+                    actions.append(action)
+                    values.append(value)
+                    rewards.append(reward)
 
-                        # Reset per-episode counters
-                        terminal = False
-                        total_reward = 0
-                        step_count = 0
-                        # Each memory corresponds to one input.
-                        self.memory.reset(self.preprocess(env, env.reset()))
+                    total_reward += reward
+                    step_count += 1
+                    t += 1
 
+                if terminal:
+                    reward = 0
+                else:
+                    # Bootstrap from last state
+                    reward = sess.run(
+                        self.model.value,
+                        self.memory.build_single_feed(
+                            self.model.model.inputs)
+                    )[0][0]
+
+                # Here we take the rewards and values from the exp, and use them to
+                # generate the advantage and discounted returns.
+                # The advantage function uses "Generalized Advantage
+                # Estimation"
+                discounted_rewards = discount(rewards, gamma, reward)
+                value_plus = np.array(values + [reward])
+                advantages = discount(
+                    rewards + gamma * value_plus[1:] - value_plus[:-1], gamma)
+
+                # Train network
+                v_l, p_l, e_l, g_n, v_n, _ = sess.run([
+                    self.model.value_loss,
+                    self.model.policy_loss,
+                    self.model.entropy,
+                    self.model.grad_norms,
+                    self.model.var_norms,
+                    self.model.train
+                ],
+                    {
+                    **dict(zip(self.model.model.inputs, state_batches)),
+                        **dict(zip(self.model.actions, zip(*actions))),
+                        **
+                    {
+                            self.model.target_v: discounted_rewards,
+                            self.model.advantages: advantages
+                    }
+                }
+                )
+
+                if terminal:
+                    # Record metrics
+                    writer.add_summary(
+                        make_summary({
+                            'rewards': total_reward,
+                            'lengths': step_count,
+                            'value_loss': v_l,
+                            'policy_loss': p_l,
+                            'entropy_loss': e_l,
+                            'grad_norm': g_n,
+                            'value_norm': v_n,
+                            'mean_values': np.mean(values)
+                        }),
+                        episode_count
+                    )
+
+                    episode_count += 1
+
+                    # Reset per-episode counters
+                    terminal = False
+                    total_reward = 0
+                    step_count = 0
+                    # Each memory corresponds to one input.
+                    self.memory.reset(self.preprocess(env, env.reset()))
         except Exception as e:
             # Report exceptions to the coordinator.
             coord.request_stop(e)
@@ -186,7 +183,7 @@ class ACAgentRunner(AgentRunner):
             total_reward += reward
             memory.remember(next_state)
 
-
+# TODO: Refactor to async coordinator?
 class A3CAgent(AgentRunner):
     # TODO: Refactor these hyperparameters to one object
 

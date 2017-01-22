@@ -11,25 +11,26 @@ class Memory:
     def __init__(self, time_steps):
         self.time_steps = time_steps
 
-    def reset(self, init_state):
+    def reset(self, init_state=None):
         self._memory = []
 
-        # Handle non-tuple states
-        if not isinstance(init_state, tuple):
-            self.is_tuple = False
-            init_state = (init_state,)
-        else:
-            self.is_tuple = True
+        if init_state is not None:
+            # Handle non-tuple states
+            if not isinstance(init_state, tuple):
+                self.is_tuple = False
+                init_state = (init_state,)
+            else:
+                self.is_tuple = True
 
-        for input_state in init_state:
-            # lookback buffer
-            temporal_memory = deque(maxlen=max(self.time_steps, 1))
-            # Fill temporal memory with zeros
-            while len(temporal_memory) < self.time_steps - 1:
-                temporal_memory.appendleft(np.zeros_like(input_state))
+            for input_state in init_state:
+                # lookback buffer
+                temporal_memory = deque(maxlen=max(self.time_steps, 1))
+                # Fill temporal memory with zeros
+                while len(temporal_memory) < self.time_steps - 1:
+                    temporal_memory.appendleft(np.zeros_like(input_state))
 
-            temporal_memory.append(input_state)
-            self._memory.append(temporal_memory)
+                temporal_memory.append(input_state)
+                self._memory.append(temporal_memory)
 
     def remember(self, state):
         if not self.is_tuple:
