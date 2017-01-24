@@ -1,11 +1,9 @@
 import numpy as np
 import tensorflow as tf
 import os
-import gym
 import threading
 import multiprocessing
 import time
-from gym import spaces
 
 from .a3c_model import ACModel
 from .util import *
@@ -60,10 +58,10 @@ class ACAgentRunner(AgentRunner):
         next_state = self.preprocess(env, next_state)
         return value, action, next_state, reward, terminal
 
-    def train(self, sess, coord, env_name, writer, gamma):
+    def train(self, sess, coord, env_builder, writer, gamma):
         try:
             # Thread setup
-            env = gym.make(env_name)
+            env = env_builder()
 
             episode_count = 0
 
@@ -247,7 +245,7 @@ class A3CAgent(AgentRunner):
 
     def train(self,
               sess,
-              env_name,
+              env_builder,
               summary_path='out/summary/',
               discount=.99):
         """
@@ -268,7 +266,7 @@ class A3CAgent(AgentRunner):
                 args=(
                     sess,
                     coord,
-                    env_name,
+                    env_builder,
                     writer,
                     discount
                 )
