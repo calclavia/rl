@@ -8,21 +8,9 @@ import time
 from .a3c_model import ACModel
 from .util import *
 from .memory import Memory
+from .agent import Agent
 
-
-class AgentRunner:
-    """
-    Represents a thread the agent runs on
-    """
-
-    def train(self):
-        pass
-
-    def run(self):
-        pass
-
-
-class ACAgentRunner(AgentRunner):
+class ACAgentRunner(Agent):
 
     def __init__(self, model, memory, preprocess, batch_size):
         self.model = model
@@ -186,7 +174,7 @@ class ACAgentRunner(AgentRunner):
             self.memory.remember(next_state)
 
 # TODO: Refactor to async coordinator?
-class A3CAgent(AgentRunner):
+class A3CAgent(Agent):
     # TODO: Refactor these hyperparameters to one object
 
     def __init__(self,
