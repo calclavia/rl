@@ -16,9 +16,9 @@ def make_model():
     x = Dense(128, activation='relu')(x)
     policy = Dense(num_actions, activation='softmax')(x)
     value = Dense(1, activation='linear')(x)
-    return Model([i], [policy, value])
+    return Model([i], [value])
 
 with tf.Session() as sess, tf.device('/cpu:0'):
     agent = DQNAgent(make_model)
     agent.compile(sess)
-    agent.train(sess, lambda: gym.make('CartPole-v0')).join()
+    agent.train(sess, lambda: gym.make('CartPole-v0'))

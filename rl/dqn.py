@@ -12,9 +12,7 @@ from keras.models import Model
 from .agent import Agent
 from .memory import Memory
 
-time_steps = 8
-NUM_EPISODES = 12000  # Number of episodes the agent plays
-STATE_LENGTH = 4  # Number of most recent frames to produce the input to the network
+NUM_EPISODES = 1000000  # Number of episodes the agent plays
 GAMMA = 0.99  # Discount factor
 # Number of steps to populate the replay memory before training starts
 INITIAL_REPLAY_SIZE = 20000
@@ -23,17 +21,10 @@ BATCH_SIZE = 32  # Mini batch size
 # The frequency with which the target network is updated
 TARGET_UPDATE_INTERVAL = 10000
 TRAIN_INTERVAL = 4  # The agent selects 4 actions between successive updates
-LEARNING_RATE = 0.00025  # Learning rate used by RMSProp
-MOMENTUM = 0.95  # Momentum used by RMSProp
 # Constant added to the squared gradient in the denominator of the RMSProp
 # update
 MIN_GRAD = 0.01
-SAVE_INTERVAL = 300000  # The frequency with which the network is saved
-NO_OP_STEPS = 30  # Maximum number of "do nothing" actions to be performed by the agent at the start of an episode
-LOAD_NETWORK = False
-TRAIN = True
 SAVE_SUMMARY_PATH = 'out/summary/'
-NUM_EPISODES_AT_TEST = 30  # Number of episodes the agent plays at test time
 
 # TODO: Depend only on Keras?
 # TODO: Timestep support
@@ -58,6 +49,7 @@ class DQNAgent(Agent):
         self.epsilon = initial_epsilon
         self.final_epsilon = final_epsilon
         self.epsilon_step = (initial_epsilon - final_epsilon) / explore_steps
+        self.explore_steps = explore_steps
         self.t = 0
 
         # Parameters used for summary
@@ -74,7 +66,7 @@ class DQNAgent(Agent):
         self.model_builder = model_builder
         self.preprocess = preprocess
 
-    def compile(self, sess):
+    def compile(self, sess, optimizer=tf.train.AdamOptimizer(learning_rate=1e-4)):
         self.sess = sess
 
         # Create q network
@@ -107,11 +99,6 @@ class DQNAgent(Agent):
         linear_part = error - quadratic_part
         # Define loss and gradient update operation
         self.loss = tf.reduce_mean(0.5 * tf.square(quadratic_part) + linear_part)
-
-        optimizer = tf.train.RMSPropOptimizer(
-            LEARNING_RATE, momentum=MOMENTUM, epsilon=MIN_GRAD
-        )
-
         self.train_op = optimizer.minimize(self.loss, var_list=q_weights)
 
         # Setup metrics
@@ -192,7 +179,7 @@ class DQNAgent(Agent):
             # Debug
             if self.t < INITIAL_REPLAY_SIZE:
                 mode = 'random'
-            elif INITIAL_REPLAY_SIZE <= self.t < INITIAL_REPLAY_SIZE + explore_steps:
+            elif INITIAL_REPLAY_SIZE <= self.t < INITIAL_REPLAY_SIZE + self.explore_steps:
                 mode = 'explore'
             else:
                 mode = 'exploit'
@@ -231,13 +218,12 @@ class DQNAgent(Agent):
         # Convert True to 1, False to 0
         terminal_batch = np.array(terminal_batch) + 0
 
-        target_q_values_batch = self.target_q_values.eval(
-            feed_dict={self.st: np.float32(np.array(next_state_batch) / 255.0)})
+        target_q_values_batch = self.t_model.predict(np.array(next_state_batch))
         y_batch = reward_batch + (1 - terminal_batch) * \
-            GAMMA * np.max(target_q_values_batch, axis=1)
+            GAMMA * np.amax(target_q_values_batch, axis=1)
 
-        loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
-            self.s: np.float32(np.array(state_batch) / 255.0),
+        loss, _ = self.sess.run([self.loss, self.train_op], {
+            self.q_model.inputs[0]: np.array(state_batch),
             self.a: action_batch,
             self.y: y_batch
         })
@@ -263,14 +249,3 @@ class DQNAgent(Agent):
             summary_placeholders[i]) for i in range(len(summary_vars))]
         summary_op = tf.summary.merge_all()
         return summary_placeholders, update_ops, summary_op
-
-    def get_action_at_test(self, state):
-        if random.random() <= 0.05:
-            action = random.randrange(self.num_actions)
-        else:
-            action = np.argmax(self.q_values.eval(
-                feed_dict={self.s: [np.float32(state / 255.0)]}))
-
-        self.t += 1
-
-        return action
