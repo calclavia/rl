@@ -8,14 +8,11 @@ import numpy as np
 import tensorflow as tf
 from collections import deque
 from keras.models import Model
-from keras.layers import Convolution2D, Flatten, Dense
-from keras.models import load_model
 
 from .agent import Agent
 from .memory import Memory
 
 time_steps = 8
-INPUT_SIZE = NUM_CLASSES  # Resized frame widt = 84
 NUM_EPISODES = 12000  # Number of episodes the agent plays
 STATE_LENGTH = 4  # Number of most recent frames to produce the input to the network
 GAMMA = 0.99  # Discount factor
@@ -35,26 +32,31 @@ SAVE_INTERVAL = 300000  # The frequency with which the network is saved
 NO_OP_STEPS = 30  # Maximum number of "do nothing" actions to be performed by the agent at the start of an episode
 LOAD_NETWORK = False
 TRAIN = True
-SAVE_NETWORK_PATH = 'out/dqn/' + ENV_NAME
-SAVE_SUMMARY_PATH = 'out/summary/' + ENV_NAME
+SAVE_SUMMARY_PATH = 'out/summary/'
 NUM_EPISODES_AT_TEST = 30  # Number of episodes the agent plays at test time
 
-
+# TODO: Depend only on Keras?
+# TODO: Timestep support
+# TODO: Multi-input support
 class DQNAgent(Agent):
+
     def __init__(self,
-                 num_actions,
+                 model_builder,
                  initial_epsilon=1,
                  final_epsilon=0.1,
-                 explore_steps=1000000):
+                 explore_steps=1000000,
+                 preprocess=lambda x: x):
         """
         Args
+            model_builder: A function that create a new model for the network
             initial_epsilon: Starting epsilon
             final_epsilon: Ending epsilon
             explore_steps: Number of steps over which the initial value of
                            epsilon is linearly annealed to its final value
+            preprocess: Function called to preprocess observations
         """
-        self.num_actions = num_actions
         self.epsilon = initial_epsilon
+        self.final_epsilon = final_epsilon
         self.epsilon_step = (initial_epsilon - final_epsilon) / explore_steps
         self.t = 0
 
@@ -66,127 +68,113 @@ class DQNAgent(Agent):
         self.episode = 0
 
         # Create replay memory
-        self.replay_memory = deque()
+        self.memory = deque()
+
+        # Misc
+        self.model_builder = model_builder
+        self.preprocess = preprocess
+
+    def compile(self, sess):
+        self.sess = sess
 
         # Create q network
-        self.s, self.q_values, q_network = self.build_network()
-        q_network_weights = q_network.trainable_weights
+        self.q_model = self.model_builder()
+        self.num_actions = self.q_model.outputs[0].get_shape()[1]
+        q_weights = self.q_model.trainable_weights
 
         # Create target network
-        self.st, self.target_q_values, target_network = self.build_network()
-        target_network_weights = target_network.trainable_weights
+        self.t_model = self.model_builder()
+        t_weights = self.t_model.trainable_weights
 
-        # Define target network update operation
-        self.update_target_network = [target_network_weights[i].assign(
-            q_network_weights[i]) for i in range(len(target_network_weights))]
+        # Syncs the target Q network's weight with the Q network's weights
+        self.sync = [t_weights[i].assign(q_weights[i])
+                     for i in range(len(t_weights))]
 
         # Define loss and gradient update operation
-        self.a, self.y, self.loss, self.grads_update = self.build_training_op(
-            q_network_weights)
-
-        self.sess = tf.InteractiveSession()
-        self.saver = tf.train.Saver(q_network_weights)
-        self.summary_placeholders, self.update_ops, self.summary_op = self.setup_summary()
-        self.summary_writer = tf.summary.FileWriter(SAVE_SUMMARY_PATH, self.sess.graph)
-
-        if not os.path.exists(SAVE_NETWORK_PATH):
-            os.makedirs(SAVE_NETWORK_PATH)
-
-        self.sess.run(tf.global_variables_initializer())
-
-        # Load network
-        if LOAD_NETWORK:
-            self.load_network()
-
-        # Initialize target network
-        self.sess.run(self.update_target_network)
-
-    def build_network(self):
-        inputs, x = pre_model(time_steps, False)
-        x = Dense(self.num_actions)(x)
-        model = Model(inputs, x)
-
-        s = [
-            tf.placeholder(tf.float32, [None, time_steps, INPUT_SIZE]),
-            tf.placeholder(tf.float32, [None, time_steps, NOTES_PER_BAR])
-        ]
-
-        q_values = model(s)
-
-        return s, q_values, model
-
-    def build_training_op(self, q_network_weights):
-        a = tf.placeholder(tf.int64, [None])
-        y = tf.placeholder(tf.float32, [None])
+        self.a = tf.placeholder(tf.int64, [None])
+        self.y = tf.placeholder(tf.float32, [None])
 
         # Convert action to one hot vector
-        a_one_hot = tf.one_hot(a, self.num_actions, 1.0, 0.0)
+        a_one_hot = tf.one_hot(self.a, self.num_actions, 1.0, 0.0)
         q_value = tf.reduce_sum(
-            tf.mul(self.q_values, a_one_hot), reduction_indices=1)
+            tf.mul(self.q_model.outputs[0], a_one_hot), reduction_indices=1
+        )
 
         # Clip the error, the loss is quadratic when the error is in (-1, 1),
         # and linear outside of that region
-        error = tf.abs(y - q_value)
+        error = tf.abs(self.y - q_value)
         quadratic_part = tf.clip_by_value(error, 0.0, 1.0)
         linear_part = error - quadratic_part
-        loss = tf.reduce_mean(0.5 * tf.square(quadratic_part) + linear_part)
+        # Define loss and gradient update operation
+        self.loss = tf.reduce_mean(0.5 * tf.square(quadratic_part) + linear_part)
 
         optimizer = tf.train.RMSPropOptimizer(
-            LEARNING_RATE, momentum=MOMENTUM, epsilon=MIN_GRAD)
-        grads_update = optimizer.minimize(loss, var_list=q_network_weights)
+            LEARNING_RATE, momentum=MOMENTUM, epsilon=MIN_GRAD
+        )
 
-        return a, y, loss, grads_update
+        self.train_op = optimizer.minimize(self.loss, var_list=q_weights)
 
-    def get_initial_state(self, observation, last_observation):
-        processed_observation = np.maximum(observation, last_observation)
-        processed_observation = np.uint8(
-            resize(rgb2gray(processed_observation), (INPUT_SIZE)) * 255)
-        state = [processed_observation for _ in range(STATE_LENGTH)]
-        return np.stack(state, axis=0)
+        # Setup metrics
+        self.summary_placeholders, self.update_ops, self.summary_op = self.setup_summary()
+        self.summary_writer = tf.summary.FileWriter(
+            SAVE_SUMMARY_PATH, self.sess.graph
+        )
+
+        # Init vars
+        self.sess.run(tf.global_variables_initializer())
+
+        # Initialize target network
+        self.sess.run(self.sync)
+
+    def train(self, sess, env_builder):
+        env = env_builder()
+
+        for _ in range(NUM_EPISODES):
+            terminal = False
+            state = self.preprocess(env.reset())
+            while not terminal:
+                action = self.get_action(state)
+                next_state, reward, terminal, _ = env.step(action)
+                next_state = self.preprocess(next_state)
+                self.run(state, action, reward, terminal, next_state)
+                state = next_state
 
     def get_action(self, state):
+        """
+        Picks an action given a state based on epsilon greedy policy.
+        """
         if self.epsilon >= random.random() or self.t < INITIAL_REPLAY_SIZE:
             action = random.randrange(self.num_actions)
         else:
-            action = np.argmax(self.q_values.eval(
-                feed_dict={self.s: [np.float32(state / 255.0)]}))
+            action = np.argmax(self.q_model.predict(np.array([state]))[0])
 
         # Anneal epsilon linearly over time
-        if self.epsilon > final_epsilon and self.t >= INITIAL_REPLAY_SIZE:
+        if self.epsilon > self.final_epsilon and self.t >= INITIAL_REPLAY_SIZE:
             self.epsilon -= self.epsilon_step
         return action
 
-    def run(self, state, action, reward, terminal, observation):
-        next_state = np.append(state[1:, :, :], observation, axis=0)
-
+    def run(self, state, action, reward, terminal, next_state):
         # Clip all positive rewards at 1 and all negative rewards at -1,
         # leaving 0 rewards unchanged
         reward = np.clip(reward, -1, 1)
 
         # Store transition in replay memory
-        self.replay_memory.append(
-            (state, action, reward, next_state, terminal))
-        if len(self.replay_memory) > NUM_REPLAY_MEMORY:
-            self.replay_memory.popleft()
+        self.memory.append((state, action, reward, next_state, terminal))
+
+        if len(self.memory) > NUM_REPLAY_MEMORY:
+            self.memory.popleft()
 
         if self.t >= INITIAL_REPLAY_SIZE:
             # Train network
             if self.t % TRAIN_INTERVAL == 0:
-                self.train_network()
+                self.learn()
 
             # Update target network
             if self.t % TARGET_UPDATE_INTERVAL == 0:
-                self.sess.run(self.update_target_network)
-
-            # Save network
-            if self.t % SAVE_INTERVAL == 0:
-                save_path = self.saver.save(
-                    self.sess, SAVE_NETWORK_PATH + '/' + ENV_NAME, global_step=self.t)
-                print('Successfully saved: ' + save_path)
+                self.sess.run(self.sync)
 
         self.total_reward += reward
-        self.total_q_max += np.max(self.q_values.eval(
-            feed_dict={self.s: [np.float32(state / 255.0)]}))
+        self.total_q_max += np.amax(self.q_model.predict(np.array([state]))[0])
         self.duration += 1
 
         if terminal:
@@ -223,7 +211,7 @@ class DQNAgent(Agent):
 
         return next_state
 
-    def train_network(self):
+    def learn(self):
         state_batch = []
         action_batch = []
         reward_batch = []
@@ -232,7 +220,7 @@ class DQNAgent(Agent):
         y_batch = []
 
         # Sample random minibatch of transition from replay memory
-        minibatch = random.sample(self.replay_memory, BATCH_SIZE)
+        minibatch = random.sample(self.memory, BATCH_SIZE)
         for data in minibatch:
             state_batch.append(data[0])
             action_batch.append(data[1])
@@ -248,7 +236,7 @@ class DQNAgent(Agent):
         y_batch = reward_batch + (1 - terminal_batch) * \
             GAMMA * np.max(target_q_values_batch, axis=1)
 
-        loss, _ = self.sess.run([self.loss, self.grads_update], feed_dict={
+        loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
             self.s: np.float32(np.array(state_batch) / 255.0),
             self.a: action_batch,
             self.y: y_batch
@@ -258,15 +246,15 @@ class DQNAgent(Agent):
 
     def setup_summary(self):
         episode_total_reward = tf.Variable(0.)
-        tf.scalar_summary(ENV_NAME + '/Total Reward/Episode',
+        tf.scalar_summary('/Total Reward/Episode',
                           episode_total_reward)
         episode_avg_max_q = tf.Variable(0.)
         tf.scalar_summary(
-            ENV_NAME + '/Average Max Q/Episode', episode_avg_max_q)
+            '/Average Max Q/Episode', episode_avg_max_q)
         episode_duration = tf.Variable(0.)
-        tf.scalar_summary(ENV_NAME + '/Duration/Episode', episode_duration)
+        tf.scalar_summary('/Duration/Episode', episode_duration)
         episode_avg_loss = tf.Variable(0.)
-        tf.scalar_summary(ENV_NAME + '/Average Loss/Episode', episode_avg_loss)
+        tf.scalar_summary('/Average Loss/Episode', episode_avg_loss)
         summary_vars = [episode_total_reward,
                         episode_avg_max_q, episode_duration, episode_avg_loss]
         summary_placeholders = [tf.placeholder(
@@ -275,14 +263,6 @@ class DQNAgent(Agent):
             summary_placeholders[i]) for i in range(len(summary_vars))]
         summary_op = tf.summary.merge_all()
         return summary_placeholders, update_ops, summary_op
-
-    def load_network(self):
-        checkpoint = tf.train.get_checkpoint_state(SAVE_NETWORK_PATH)
-        if checkpoint and checkpoint.model_checkpoint_path:
-            self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
-            print('Successfully loaded: ' + checkpoint.model_checkpoint_path)
-        else:
-            print('Training new network...')
 
     def get_action_at_test(self, state):
         if random.random() <= 0.05:
@@ -294,49 +274,3 @@ class DQNAgent(Agent):
         self.t += 1
 
         return action
-
-def main():
-    #env = gym.make(ENV_NAME)
-    #g_rnn = tf.Graph()
-    #with g_rnn.as_default():
-    supervised_model = load_model('data/supervised.h5')
-
-    env = MusicTunerEnv(g_rnn, supervised_model, Memory(
-        time_steps), preprocess=note_preprocess)
-    agent = Agent(num_actions=NUM_CLASSES)
-
-    if TRAIN:  # Train mode
-        for _ in range(NUM_EPISODES):
-            terminal = False
-            observation = env.reset()
-
-            state = note_preprocess(env, observation)
-            while not terminal:
-                last_observation = observation
-                action = agent.get_action(state)
-                observation, reward, terminal, _ = env.step(action)
-                # env.render()
-                processed_observation = note_preprocess(env, observation)
-                state = agent.run(state, action, reward,
-                                  terminal, processed_observation)
-    else:  # Test mode
-        # env.monitor.start(ENV_NAME + '-test')
-        for _ in range(NUM_EPISODES_AT_TEST):
-            terminal = False
-            observation = env.reset()
-
-            state = note_preprocess(env, observation)
-            while not terminal:
-                last_observation = observation
-                action = agent.get_action_at_test(state)
-                observation, _, terminal, _ = env.step(action)
-                env.render()
-                processed_observation = preprocess(
-                    observation, last_observation)
-                state = np.append(
-                    state[1:, :, :], processed_observation, axis=0)
-        # env.monitor.close()
-
-
-if __name__ == '__main__':
-    main()
