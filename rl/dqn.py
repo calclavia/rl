@@ -1,5 +1,6 @@
 """
-Implementation of Deep Q Network
+Implementation of Deep Q Network.
+TODO: Incomplete WIP
 """
 import os
 import gym
@@ -12,15 +13,15 @@ from keras.models import Model
 from .agent import Agent
 from .memory import Memory
 
-NUM_EPISODES = 1000000  # Number of episodes the agent plays
+NUM_EPISODES = 100000  # Number of episodes the agent plays
 GAMMA = 0.99  # Discount factor
 # Number of steps to populate the replay memory before training starts
-INITIAL_REPLAY_SIZE = 20000
-NUM_REPLAY_MEMORY = 400000  # Number of replay memory the agent uses for training
-BATCH_SIZE = 32  # Mini batch size
+INITIAL_REPLAY_SIZE = 1000
+NUM_REPLAY_MEMORY = 10000  # Number of replay memory the agent uses for training
+BATCH_SIZE = 16  # Mini batch size
 # The frequency with which the target network is updated
-TARGET_UPDATE_INTERVAL = 10000
-TRAIN_INTERVAL = 4  # The agent selects 4 actions between successive updates
+TARGET_UPDATE_INTERVAL = 100
+TRAIN_INTERVAL = 1  # The agent selects 4 actions between successive updates
 # Constant added to the squared gradient in the denominator of the RMSProp
 # update
 MIN_GRAD = 0.01
@@ -177,6 +178,7 @@ class DQNAgent(Agent):
                 self.summary_writer.add_summary(summary_str, self.episode + 1)
 
             # Debug
+            """
             if self.t < INITIAL_REPLAY_SIZE:
                 mode = 'random'
             elif INITIAL_REPLAY_SIZE <= self.t < INITIAL_REPLAY_SIZE + self.explore_steps:
@@ -187,6 +189,7 @@ class DQNAgent(Agent):
                 self.episode + 1, self.t, self.duration, self.epsilon,
                 self.total_reward, self.total_q_max / float(self.duration),
                 self.total_loss / (float(self.duration) / float(TRAIN_INTERVAL)), mode))
+            """
 
             self.total_reward = 0
             self.total_q_max = 0

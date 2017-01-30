@@ -44,6 +44,7 @@ class ACAgentRunner(Agent):
         flatten_action = action[0] if len(action) == 1 else action
         next_state, reward, terminal, info = env.step(flatten_action)
         next_state = self.preprocess(env, next_state)
+
         return value, action, next_state, reward, terminal
 
     def train(self, sess, coord, env_builder, writer, gamma):
@@ -57,6 +58,7 @@ class ACAgentRunner(Agent):
             terminal = False
             total_reward = 0
             step_count = 0
+
             # Each memory corresponds to one input.
             self.memory.reset(self.preprocess(env, env.reset()))
 
