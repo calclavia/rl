@@ -213,12 +213,12 @@ class A3CAgent(Agent):
 
     # TODO: Not SRP. Agent shouldn't handle model saving.
     def load(self, sess):
-        self.model.model.load_weights(self.model_path + '/model.h5', by_name=True)
+        self.model.model.load_weights(self.model_path + '/model.h5')
 
     def save(self, sess):
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
-        self.model.model.save(self.model_path + '/model.h5')
+        self.model.model.save_weights(self.model_path + '/model.h5')
         self.save_count += 1
 
     def compile(self,
