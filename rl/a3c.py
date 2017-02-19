@@ -213,14 +213,12 @@ class A3CAgent(Agent):
 
     # TODO: Not SRP. Agent shouldn't handle model saving.
     def load(self, sess):
-        ckpt = tf.train.get_checkpoint_state(self.model_path)
-        self.saver.restore(sess, ckpt.model_checkpoint_path)
+        self.model.model.load_weights(self.model_path + '/model.h5', by_name=True)
 
     def save(self, sess):
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
-        self.saver.save(sess, self.model_path + '/model-' +
-                        str(self.save_count) + '.cptk')
+        self.model.model.save(self.model_path + '/model.h5')
         self.save_count += 1
 
     def compile(self,
