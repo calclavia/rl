@@ -218,7 +218,7 @@ class A3CAgent(Agent):
     def save(self, sess):
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
-        self.model.model.save_weights(self.model_path + '/model.h5')
+        self.model.model.save_weights(self.model_path + '/model_' + str(self.save_count) + '.h5')
         self.save_count += 1
 
     def compile(self,
