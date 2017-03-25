@@ -4,11 +4,16 @@ import os
 import threading
 import multiprocessing
 import time
+import keras.backend as K
 
 from .a3c_model import ACModel
 from .util import *
 from .memory import Memory
 from .agent import Agent
+
+def get_learning_phase(phase):
+    # TODO: Make this optional
+    return { K.learning_phase(): phase }
 
 class ACAgentRunner(Agent):
 
@@ -24,7 +29,10 @@ class ACAgentRunner(Agent):
         """
         *probs, value = sess.run(
             self.model.model.outputs,
-            self.memory.build_single_feed(self.model.model.inputs)
+            {
+                **self.memory.build_single_feed(self.model.model.inputs),
+                **get_learning_phase(0)
+            }
         )
 
         # Remove batch dimension
@@ -99,8 +107,10 @@ class ACAgentRunner(Agent):
                     # Bootstrap from last state
                     reward = sess.run(
                         self.model.value,
-                        self.memory.build_single_feed(
-                            self.model.model.inputs)
+                        {
+                            **self.memory.build_single_feed(self.model.model.inputs),
+                            **get_learning_phase(0)
+                        }
                     )[0][0]
 
                 # Here we take the rewards and values from the exp, and use them to
@@ -122,13 +132,14 @@ class ACAgentRunner(Agent):
                     self.model.train
                 ],
                     {
-                    **dict(zip(self.model.model.inputs, state_batches)),
+                        **dict(zip(self.model.model.inputs, state_batches)),
                         **dict(zip(self.model.actions, zip(*actions))),
                         **
-                    {
-                            self.model.target_v: discounted_rewards,
-                            self.model.advantages: advantages
-                    }
+                        {
+                                self.model.target_v: discounted_rewards,
+                                self.model.advantages: advantages
+                        },
+                        ** get_learning_phase(1)
                 }
                 )
 
@@ -224,7 +235,7 @@ class A3CAgent(Agent):
     def compile(self,
                 sess,
                 grad_clip=50.,
-                optimizer=tf.train.AdamOptimizer(learning_rate=1e-4)):
+                optimizer=tf.train.AdamOptimizer()):
         self.model.compile(optimizer, grad_clip)
         print(self.model.model.summary())
 

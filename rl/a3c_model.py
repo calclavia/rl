@@ -60,9 +60,12 @@ class ACModel:
         self.gradients = tf.gradients(self.loss, local_vars)
         self.var_norms = tf.global_norm(local_vars)
         # Clip norm of gradients
-        grads, self.grad_norms = tf.clip_by_global_norm(
+        if grad_clip > 0:
+            grads, self.grad_norms = tf.clip_by_global_norm(
             self.gradients, grad_clip)
-
+        else:
+            grads = self.gradients
+            
         # Apply local gradients to global network
         global_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         self.train = optimizer.apply_gradients(zip(grads, global_vars))

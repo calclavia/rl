@@ -13,9 +13,8 @@ pip install -r requirements.txt
 
 ## Usage
 ```
-with tf.device("/cpu:0"):
-  agent = A3CAgent(num_actions, lambda: model)
-  agent.train(env_name)
+agent = A3CAgent(num_actions, lambda: model)
+agent.train(env_name)
 ```
 
 Tensorboard Logging
