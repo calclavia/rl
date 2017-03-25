@@ -4,16 +4,11 @@ import os
 import threading
 import multiprocessing
 import time
-import keras.backend as K
 
 from .a3c_model import ACModel
 from .util import *
 from .memory import Memory
 from .agent import Agent
-
-def get_learning_phase(phase):
-    # TODO: Make this optional
-    return { K.learning_phase(): phase }
 
 class ACAgentRunner(Agent):
 
@@ -31,7 +26,7 @@ class ACAgentRunner(Agent):
             self.model.model.outputs,
             {
                 **self.memory.build_single_feed(self.model.model.inputs),
-                **get_learning_phase(0)
+                self.model.isTrain: False
             }
         )
 
@@ -109,7 +104,7 @@ class ACAgentRunner(Agent):
                         self.model.value,
                         {
                             **self.memory.build_single_feed(self.model.model.inputs),
-                            **get_learning_phase(0)
+                            self.model.isTrain: False
                         }
                     )[0][0]
 
@@ -137,9 +132,9 @@ class ACAgentRunner(Agent):
                         **
                         {
                                 self.model.target_v: discounted_rewards,
-                                self.model.advantages: advantages
+                                self.model.advantages: advantages,
+                                self.model.isTrain: True
                         },
-                        ** get_learning_phase(1)
                 }
                 )
 

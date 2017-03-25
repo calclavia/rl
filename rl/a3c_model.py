@@ -1,5 +1,5 @@
 import tensorflow as tf
-
+import keras.backend as K
 
 class ACModel:
     """
@@ -15,6 +15,10 @@ class ACModel:
         # Output layers for policy and value estimations
         self.policies = self.model.outputs[:-1]
         self.value = self.model.outputs[-1]
+
+        # The Keras learning phase tensor. Needs to be the same in all threads.
+        # Boolean tensor that becomes true while training
+        self.isTrain = K.learning_phase()
 
     def compile(self, optimizer, grad_clip):
         # Only the worker network need ops for loss functions and gradient
@@ -65,7 +69,7 @@ class ACModel:
             self.gradients, grad_clip)
         else:
             grads = self.gradients
-            
+
         # Apply local gradients to global network
         global_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         self.train = optimizer.apply_gradients(zip(grads, global_vars))
