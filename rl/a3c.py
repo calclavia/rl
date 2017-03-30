@@ -38,11 +38,7 @@ class ACAgentRunner(Agent):
 
         for p in probs:
             p = p[0]
-            if len(p) == 1:
-                # Must be a binary probability
-                action.append(round(np.random.random()))
-            else:
-                action.append(np.random.choice(len(p), p=p))
+            action.append(np.random.choice(len(p), p=p))
 
         flatten_action = action[0] if len(action) == 1 else action
         next_state, reward, terminal, info = env.step(flatten_action)
